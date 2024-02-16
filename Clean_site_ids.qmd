@@ -1,0 +1,34 @@
+---
+title: "Clean_site_ids"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Import Libraries
+
+```{r}
+library(tidyverse)
+```
+
+## Import Data
+
+```{r}
+Sites_Raw <- read.csv('_Sites - Overview.csv', skip = 1)
+```
+
+You can add options to executable code like this
+
+```{r}
+
+Sites_Raw |> 
+  select(c(CRAM.IDS, Site.ID)) |> 
+  mutate(CRAM.IDS = strsplit(CRAM.IDS, split = ', ')) |> 
+  unnest(CRAM.IDS) |> 
+  rename()
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
