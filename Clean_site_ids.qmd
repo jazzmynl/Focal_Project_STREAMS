@@ -24,11 +24,15 @@ You can add options to executable code like this
 
 ```{r}
 
-Sites_Raw |> 
+Sites = Sites_Raw |> 
   select(c(CRAM.IDS, Site.ID)) |> 
   mutate(CRAM.IDS = strsplit(CRAM.IDS, split = ', ')) |> 
   unnest(CRAM.IDS) |> 
-  rename()
+  rename(CRAM_ID = CRAM.IDS, Site_ID = Site.ID)
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+## Export 
+
+```{r}
+write.csv(x=Sites, file='site_and_cram_ids.csv')
+```
