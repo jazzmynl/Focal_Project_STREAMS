@@ -1,0 +1,157 @@
+---
+title: "Water Quality Cleaning"
+author: "Sully Riley"
+format: html
+editor: visual
+---
+
+### Import Libraries
+
+```{r}
+library(tidyverse)
+```
+
+## Import Data
+
+```{r}
+AllWQ_Raw <- read_csv("water-quality-raw/AllWQ.csv")
+
+AllWQ = AllWQ_Raw |> 
+  mutate(SampleDateTime = SampleDate) |> 
+  mutate(SampleDate = mdy_hms(SampleDateTime))
+
+```
+
+### Group measurements by nearest timeframe
+
+Could be week, month, season, year
+
+```{r}
+AllWQ = AllWQ |> 
+  mutate(Timeframe = floor_date(SampleDate, 'year'))
+```
+
+Amy's suggestions
+
+```{r}
+AllWQ |> 
+  mutate(Year = year(mdy_hms(SampleDate))) |> 
+  group_by(StationCode, Year) |> 
+  count(Analyte) |> 
+  arrange(n)
+
+AllWQ |> 
+  select(Analyte, StationCode) |> 
+  distinct() |> 
+  group_by(Analyte) |> 
+  count() |> 
+  arrange(-n)
+
+```
+
+### Select Stations
+
+```{r}
+AllStations = AllWQ$StationCode |> unique() |> length()
+```
+
+### Water Stations in Fire Range
+
+```{r}
+WaterStations.Fire = readxl::read_excel('water-quality-raw/WaterStationFireSites.xlsx')
+
+colnames(WaterStations.Fire)
+
+WaterStations.Fire
+```
+
+#### About this data:
+
+|     | Column Name      | Type        | Notes                                                   |
+|-----------------|-----------------|-------------------|-------------------|
+| 1   | `StationCode`    | chr         |                                                         |
+| 2   | `FireDistance`   | dbl         |                                                         |
+| 3   | `latitude`       | dbl         |                                                         |
+| 4   | `longitude`      | dbl         |                                                         |
+| 5   | `Elevation`      | dbl         |                                                         |
+| 6   | `EcoregionCode`  | chr         |                                                         |
+| 7   | `Ecoregion`      | chr         |                                                         |
+| 8   | `FIRE_YEAR`      | dbl         |                                                         |
+| 9   | `FIRE_NAME`      | chr         |                                                         |
+| 10  | `FIRE_START`     | S3: POSIXct |                                                         |
+| 11  | `FIRE_CONTAINED` | S3: POSIXct |                                                         |
+| 12  | `GIS_ACRES`      | dbl         |                                                         |
+| 13  | `vistdate`       | S3: POSIXct | CRAM visit date?                                        |
+| 14  | `Pair_ID`        | chr         | If present, has matching CRAM site (within x distance?) |
+
+#### Questions about this data
+
+#### Water Quality in Fire Range
+
+```{r}
+WaterQuality.Fire = AllWQ |> filter(StationCode %in% WaterStations.Fire$StationCode)
+
+Timepoints = WaterQuality.Fire |>
+  group_by(StationCode, Timeframe) |> 
+  count(Analyte) |>
+  pivot_wider(
+    id_cols = c(StationCode, Timeframe),
+    names_from = Analyte,
+    values_from = n
+  )
+
+Timepoints_Matrix = data.matrix(Timepoints[,3:length(Timepoints)])
+
+rownames(Timepoints_Matrix) = paste(Timepoints$StationCode, Timepoints$Timeframe, sep = "_")
+
+Timepoints_Matrix[is.na(Timepoints_Matrix)] = 0
+Timepoints_Matrix[Timepoints_Matrix > 0] = 1
+
+Timepoints_Matrix |> View()
+
+# How many stations-timeframes have this analyte? 
+
+minNumStationsWithAnalyte = min(colSums(Timepoints_Matrix))
+minNumAnalytesAtStation = min(rowSums(Timepoints_Matrix)) 
+
+while(minNumStationsWithAnalyte > 0 & 
+  minNumAnalytesAtStation > 0) {
+
+  
+ if ( minNumStationsWithAnalyte > 0 & 
+  minNumAnalytesAtStation > 0 & minNumStationsWithAnalyte <= minNumAnalytesAtStation) {
+  colsToKeep = colSums(Timepoints_Matrix) != minNumStationsWithAnalyte
+  
+  print(paste('Dropping', length(colsToKeep[!colsToKeep]), 'of', length(colsToKeep), 'analytes:')) 
+  print(names(colsToKeep)[!colsToKeep])
+
+  Timepoints_Matrix = Timepoints_Matrix[,colsToKeep] 
+} else {
+  rowsToKeep = rowSums(Timepoints_Matrix) != minNumAnalytesAtStation
+  
+  print(paste('Dropping', length(rowsToKeep[!rowsToKeep]), 'of', length(rowsToKeep), 'stations:')) 
+  print(names(rowsToKeep)[!rowsToKeep])
+
+  Timepoints_Matrix = Timepoints_Matrix[rowsToKeep,]
+}
+
+    
+  minNumStationsWithAnalyte = min(colSums(Timepoints_Matrix))
+minNumAnalytesAtStation = min(rowSums(Timepoints_Matrix)) 
+  }
+
+```
+
+### Water Stations in Control
+
+```{r}
+# TBD
+```
+
+## wefwefw
+
+1.  Paring down Sites and Analytes such that all Sites have all Analytes
+    1.  Ideally analytes on the same day
+2.  Fire history
+    1.  time since last fire (categorical)
+    2.  Where are the thresholds?

@@ -1,0 +1,60 @@
+---
+title: "WQdata"
+output: html_document
+date: "2024-02-18"
+---
+
+Scripts used to generate `AllWQ.csv` (source data not included in repo).
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(readxl)
+library(clipr)
+```
+
+```{r}
+Data2014to2023 <- read_tsv("Desktop/Capstone/WQ/export1423.tsv")
+Data2011to2013 <- read_tsv("Desktop/Capstone/WQ/export1113.tsv")
+
+Cleaning1113 <- Data2011to2013 %>%
+   select(StationCode,SampleDate,CollectionTime,CollectionDepth,UnitCollectionDepth,Analyte,Unit,Result,latitude,longitude,PositionWaterColumn,Huc12_name,Huc12_number) %>% 
+  drop_na(Result)
+
+Cleaning1423 <- Data2014to2023 %>%
+   select(StationCode,SampleDate,CollectionTime,CollectionDepth,UnitCollectionDepth,Analyte,Unit,Result,latitude,longitude,PositionWaterColumn,Huc12_name,Huc12_number) %>% 
+  drop_na(Result)
+
+
+AllData <- rbind(Cleaning1113, Cleaning1423)
+
+write_clip(AllData)
+
+write.csv(AllData, "Desktop/Capstone/WQ/AllWQ.csv", row.names=FALSE)
+```
+
+```{r}
+AnalyteCleaning <- read_csv("AllWQ.csv")
+
+Analytes <- as.data.frame(unique(AnalyteCleaning$Analyte))
+AnalytesofInterest <- AnalyteCleaning %>%
+  filter(Analyte == "Total Dissolved Solids, Dissolved" |
+         Analyte == "Oxygen, Dissolved, Total" |
+           Analyte == "Phosphorus as P, Total" |
+           Analyte == "Nitrogen, Total, Total" |
+           Analyte == "Total Organic Carbon, Total")
+
+write_clip(AnalytesofInterest)
+  
+```
+
+```{r}
+Codes <- as.data.frame(unique(AnalytesofInterest$StationCode)) %>%
+  rename("StationCode" = 1)
+Points=AnalytesofInterest[c("StationCode", "latitude", "longitude")]
+
+UniquePoints <- full_join(Codes, Points, by= join_by(StationCode)) %>% distinct()
+
+write_clip(UniquePoints)
+```
