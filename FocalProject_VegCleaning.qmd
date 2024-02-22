@@ -13,8 +13,22 @@ Quarto enables you to weave together content and executable code into a finished
 ## Loading Packages and Dataset
 
 ```{r}
-load(file = "ecoatlas_wetlandconditions_plants.csv")
+library(readr)
+library(readxl)
+library(vegan)
+Veg <- read_csv("ecoatlas_wetlandcondition_plants.csv")
+Native_Plants <- read_xls("All_plants_Native_to_California_Detailed.xls")
+CRAMClean <- read_xlsx("CRAMSitesClean.xlsx")
+Confirmed_Sites <- read.csv("ConfirmedSite.csv")
+CRAM_sites_plants <- read_xlsx("CRAM_Sites_Plants.xlsx")
 ```
+
+```{r}
+library(tidyverse)
+
+```
+
+#BETA D
 
 ## Running Code
 
