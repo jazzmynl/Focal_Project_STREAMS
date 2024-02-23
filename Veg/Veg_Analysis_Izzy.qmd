@@ -1,0 +1,24 @@
+---
+title: "Veg_Analysis"
+format: html
+date created: 2/22/2024
+editor: visual
+---
+
+#Vegetation Analysis - Izzy Funes
+
+Load the Primary Dataframe
+
+```{r}
+load("Veg/CRAM_Plant_Primary.Rdata")
+```
+
+Load packages
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+Veg_Primary <- CRAM_PlantJoin
+```
