@@ -16,9 +16,17 @@ library(tidyverse)
 ```{r}
 AllWQ_Raw <- read_csv("water-quality-raw/AllWQ.csv")
 
+AllWQ_Raw
+
 AllWQ = AllWQ_Raw |> 
-  mutate(SampleDateTime = SampleDate) |> 
-  mutate(SampleDate = mdy_hms(SampleDateTime))
+  mutate(SampleDateTime = mdy_hms(SampleDate))
+
+hour(AllWQ$SampleDateTime) = hour(mdy_hms(AllWQ$CollectionTime))
+minute(AllWQ$SampleDateTime) = minute(mdy_hms(AllWQ$CollectionTime))
+second(AllWQ$SampleDateTime) = second(mdy_hms(AllWQ$CollectionTime))
+
+AllWQ = AllWQ |> 
+  select(-c(SampleDate, CollectionTime))
 
 ```
 
@@ -27,48 +35,61 @@ AllWQ = AllWQ_Raw |>
 Could be week, month, season, year
 
 ```{r}
-AllWQ = AllWQ |> 
-  mutate(Timeframe = floor_date(SampleDate, 'year'))
+AllWQ = AllWQ #|> 
+  #mutate(Timeframe = floor_date(SampleDate, 'year'))
+
+AllWQ
+
 ```
 
 Amy's suggestions
 
 ```{r}
-AllWQ |> 
-  mutate(Year = year(mdy_hms(SampleDate))) |> 
-  group_by(StationCode, Year) |> 
-  count(Analyte) |> 
-  arrange(n)
+# AllWQ |> 
+#   mutate(Year = year(mdy_hms(SampleDate))) |> 
+#   group_by(StationCode, Year) |> 
+#   count(Analyte) |> 
+#   arrange(n)
 
-AllWQ |> 
-  select(Analyte, StationCode) |> 
-  distinct() |> 
-  group_by(Analyte) |> 
-  count() |> 
-  arrange(-n)
+# AllWQ |> 
+#   select(Analyte, StationCode) |> 
+#   distinct() |> 
+#   group_by(Analyte) |> 
+#   count() |> 
+#   arrange(-n)
 
 ```
 
 ### Select Stations
 
 ```{r}
-AllStations = AllWQ$StationCode |> unique() |> length()
+CRAMSites = read.csv('../ConfirmedSite.csv') |> 
+  mutate(visitdate = mdy(visitdate)) 
 ```
 
 ### Water Stations in Fire Range
 
 ```{r}
-WaterStations.Fire = readxl::read_excel('water-quality-raw/WaterStationFireSites.xlsx')
+WaterStationFireSite_Raw = readxl::read_excel('water-quality-raw/WaterStationFireSites.xlsx')
 
-colnames(WaterStations.Fire)
+# # don't actually have a good one here - need from garrett 
+# WaterStationsCRAMMap = WaterStationFireSite_Raw |> 
+#   select(c(StationCode, visitdate, Pair_ID)) |> 
+#   filter(!(is.na(visitdate) & is.na(Pair_ID))) |> 
+#   mutate(Pair_ID = parse_number(Pair_ID) |> paste('a', sep = '')) |> 
+#   mutate(unique_visit_date_pair_id = paste(visitdate, Pair_ID, sep = '-'))
+# # this isn't working bc the pairIds are duplicated
+# x = left_join(CRAMSites, WaterStationsToCRAM)
 
-WaterStations.Fire
+# WaterStations.Fire = WaterStationFireSite_Raw |> 
+#   select(-c(visitdate, Pair_ID)) |> 
+#   unique()
 ```
 
 #### About this data:
 
 |     | Column Name      | Type        | Notes                                                   |
-|-----------------|-----------------|-------------------|-------------------|
+|------------------|------------------|------------------|------------------|
 | 1   | `StationCode`    | chr         |                                                         |
 | 2   | `FireDistance`   | dbl         |                                                         |
 | 3   | `latitude`       | dbl         |                                                         |
@@ -84,9 +105,110 @@ WaterStations.Fire
 | 13  | `vistdate`       | S3: POSIXct | CRAM visit date?                                        |
 | 14  | `Pair_ID`        | chr         | If present, has matching CRAM site (within x distance?) |
 
+#### Questions about this data 
+
+-   i noticed that the control set includes the fire station codes (though doesn’t include some of the CRAM site metadata) - is that intentional or should I just filter those out?
+
+-   I noticed that for the water stations within the fire, you matched it up to the cram site if applicable - should we do the same for the control stations, or were there none?
+
+-   a question about the pair_Id in the water stations for fire - i think some of them match the control CRAM data if I’m not mistaken? but I think they should all be fire, right?
+
+```{r}
+
+```
+
+### Control Water Stations (out of fire range)
+
+```{r}
+WaterStations_Raw = read.csv("water-quality-raw/WaterStationFireControlSites.csv")
+
+WaterStations = WaterStations_Raw |> 
+  mutate(FIRE_START = mdy(FIRE_START),
+         FIRE_CONTAINED = mdy(FIRE_CONTAINED))
+```
+
 #### Questions about this data
 
-#### Water Quality in Fire Range
+-   What is Prox_ID?
+
+### Confidence Checks
+
+```{r}
+library(assertthat)
+
+# All Water Stations should have a unique code.
+validate_that(
+  WaterStations$StationCode |> unique() |> length() == WaterStations$StationCode |> length(),
+  msg = 'All Water Stations do not have a unique code'
+  )
+
+# # maybe not needed
+# validate_that(
+#   WaterStations.Fire |> 
+#     filter(StationCode %in% WaterStations.Control$StationCode) |> 
+#     length() 
+#   == 0,
+#   msg = "Water Stations in control and water stations in fire are not exclusive."
+# )
+
+validate_that(
+  FALSE,
+  msg = "There should be one row per water station in the mapping"
+)
+
+```
+
+### Combine data
+
+```{r}
+WaterQuality = AllWQ |> filter(StationCode %in% WaterStations$StationCode) 
+
+WaterQuality = WaterQuality |> 
+  left_join(
+    WaterStations, join_by(StationCode)
+  ) |> 
+  mutate(DaysSinceFireStart = as.Date(SampleDateTime) - FIRE_START, 
+         DaysSinceFireContained = as.Date(SampleDateTime) - FIRE_CONTAINED) |>
+  mutate(TimeRelativeToFire = case_when(
+    DaysSinceFireStart < 0 ~ "pre", #before fire
+    DaysSinceFireContained > 0 ~ "post",
+    DaysSinceFireStart >= 0 & DaysSinceFireContained <= 0 ~ "post",
+    is.na(DaysSinceFireContained) & DaysSinceFireStart >= 0 ~ "post",
+    .default = NA
+  )) |> mutate(
+    TimeRelativeToFire = case_when(
+      TimeRelativeToFire == "pre" ~ "pre",
+      .default = "post"
+    )
+  )
+
+## not sure actually what to join here, assuminmg prox_id is site_id
+PLACEHOLDER = left_join(WaterQuality, CRAMSites, by=join_by(Prox_ID == SITE_ID, TimeRelativeToFire == Pre.Post_Fire))
+
+## assuming the above is correct, (it's not)
+## how do I find the closest 
+
+PLACEHOLDER |> 
+  filter(min(abs(visitdate - SampleDateTime)))
+
+
+```
+
+## Select Analytes
+
+### Get best analyte measurement
+
+Measurement should be:
+
+-   Closest to target date
+
+-   NOT on the other side of the fire start / end
+
+```{r}
+
+```
+
+### Select Analytes
 
 ```{r}
 WaterQuality.Fire = AllWQ |> filter(StationCode %in% WaterStations.Fire$StationCode)
