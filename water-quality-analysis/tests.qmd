@@ -124,7 +124,7 @@ WaterStationFireSite_Raw = readxl::read_excel('water-quality-raw/WaterStationFir
 #### About this data:
 
 |     | Column Name      | Type        | Notes                                                   |
-|------------------|------------------|------------------|------------------|
+|-----|------------------|-------------|---------------------------------------------------------|
 | 1   | `StationCode`    | chr         |                                                         |
 | 2   | `FireDistance`   | dbl         |                                                         |
 | 3   | `latitude`       | dbl         |                                                         |

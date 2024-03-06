@@ -10,14 +10,16 @@ editor: visual
 ```{r}
 library(tidyverse)
 library(assertthat)
+
+source("utils.R")
 ```
 
 ## Import Data
 
 ```{r}
 RAW_DATA_FILE_PATH = "water-quality-raw/"
-SHOULD_RUN_ASSERTIONS = FALSE
-SHOULD_FILTER_ALL_WQ = F
+SHOULD_RUN_ASSERTIONS = T
+SHOULD_FILTER_ALL_WQ = T
 
 assert = function(assertion, msg = msg) {
   if(SHOULD_RUN_ASSERTIONS) {
@@ -32,25 +34,29 @@ assert = function(assertion, msg = msg) {
 ### Water Stations
 
 ```{r}
-water_stations_raw = readxl::read_excel(paste(RAW_DATA_FILE_PATH, 'WaterStationSites-2-26-24.xlsx', sep = ''))
+water_stations_raw = readxl::read_excel(paste(RAW_DATA_FILE_PATH, 'WaterStationSites-3-5-24.xlsx', sep = ''))
 
 water_stations = water_stations_raw |> 
   rename(
-    station_code = `StationCode`,
-    fire_distance = `FireDistance`,
-    latitude = `latitude`,
-    longitude = `longitude`,
-    elevation = `Elevation`,
-    ecoregion_code = `EcoregionCode`,
-    ecoregion = `Ecoregion`,
-    fire_year = `FIRE_YEAR`,
-    fire_name = `FIRE_NAME`,
-    fire_start = `FIRE_START`,
-    fire_contained = `FIRE_CONTAINED`,
-    gis_acres = `GIS_ACRES`,
-    prox_id = `Prox_ID`,
-    fire_history_type = `Type`,
-    water_station_id = `WaterStation_ID`,
+    station_code = `StationCode`, # required for analysis
+    fire_start = `ALARM_DATE`, # required for analysis
+    fire_contained = `CONT_DATE`, # required for analysis
+    fire_name = `FIRE_NAME`
+    
+    # fire_distance = `FireDistance`,
+    # latitude = `latitude`,
+    # longitude = `longitude`,
+    # elevation = `Elevation`,
+    # ecoregion_code = `EcoregionCode`,
+    # ecoregion = `Ecoregion`,
+    # fire_year = `FIRE_YEAR`,
+    # fire_name = `FIRE_NAME`,
+    # fire_start = `FIRE_START`,
+    # fire_contained = `FIRE_CONTAINED`,
+    # gis_acres = `GIS_ACRES`,
+    # prox_id = `Prox_ID`,
+    # fire_history_type = `Type`,
+    # water_station_id = `WaterStation_ID`,
 ) |> 
   mutate(
     fire_start = ymd(fire_start),
@@ -61,31 +67,22 @@ water_stations = water_stations_raw |>
 ### Water Quality
 
 ```{r}
-if (SHOULD_FILTER_ALL_WQ) {
-  all_water_quality_raw <- read_csv(paste(RAW_DATA_FILE_PATH, "AllWQ.csv", sep = ''))
-
-  water_quality_for_stations = all_water_quality_raw |> 
-    filter(all_water_quality_raw$StationCode %in% water_stations$station_code)
-
-  write_csv(water_quality_for_stations, paste(RAW_DATA_FILE_PATH, "wq-for-stations.csv", sep = ''))
-}
-
-water_quality_raw = read_csv(paste(RAW_DATA_FILE_PATH, "wq-for-stations.csv", sep = ''))
+water_quality_raw = read_tsv(paste(RAW_DATA_FILE_PATH, "analytes.tsv", sep = ''))
 
 water_quality = water_quality_raw |> rename(
-  station_code = `StationCode`,
+  station_code = `StationCode`, # required for analysis
   collection_depth = `CollectionDepth`,  
   unit_collection_depth = `UnitCollectionDepth`, 
-  analyte = `Analyte`,             
-  unit = `Unit`,           
+  analyte = `Analyte`,             # required for analysis
+  unit = `Unit`,           # required for analysis
   result = `Result`,        
   latitude = `latitude`,           
   longitude = `longitude`,   
   position_water_column = `PositionWaterColumn`,
   huc12_name = `Huc12_name`,  
   huc12_number = `Huc12_number`,  
-  sample_date = `SampleDate`, 
-  collection_time = `CollectionTime`
+  sample_date = `SampleDate`, # required for analysis
+  collection_time = `CollectionTime` # required for analysis
   ) |>  
   mutate(sample_date_time = mdy_hms(sample_date))
 
@@ -143,130 +140,25 @@ cram_measurements = cram_measurements_raw |>
   ) 
 ```
 
-## SKIP
-
-### OLD
-
-#### Group measurements by nearest timeframe
-
-Could be week, month, season, year
-
-```{r}
-# water_quality = water_quality #|> 
-#   #mutate(Timeframe = floor_date(SampleDate, 'year'))
-# 
-# water_quality
-
-```
-
-Amy's suggestions
-
-```{r}
-# water_quality |> 
-#   mutate(Year = year(mdy_hms(SampleDate))) |> 
-#   group_by(StationCode, Year) |> 
-#   count(Analyte) |> 
-#   arrange(n)
-#
-# water_quality |> 
-#   select(Analyte, StationCode) |> 
-#   distinct() |> 
-#   group_by(Analyte) |> 
-#   count() |> 
-#   arrange(-n)
-
-```
-
-### Select StationsWater Stations in Fire Range
-
-```{r}
-# WaterStationFireSite_Raw = readxl::read_excel('water-quality-raw/WaterStationFireSites.xlsx')
-#
-# # don't actually have a good one here - need from garrett 
-# water_stationsCRAMMap = WaterStationFireSite_Raw |> 
-#   select(c(StationCode, visitdate, Pair_ID)) |> 
-#   filter(!(is.na(visitdate) & is.na(Pair_ID))) |> 
-#   mutate(Pair_ID = parse_number(Pair_ID) |> paste('a', sep = '')) |> 
-#   mutate(unique_visit_date_pair_id = paste(visitdate, Pair_ID, sep = '-'))
-# # this isn't working bc the pairIds are duplicated
-# x = left_join(cram_measurements, water_stationsToCRAM)
-#
-# water_stations.Fire = WaterStationFireSite_Raw |> 
-#   select(-c(visitdate, Pair_ID)) |> 
-#   unique()
-```
-
-#### About this data:
-
-|     | Column Name      | Type        | Notes                                                   |
-|------------|------------|------------|------------------------------------|
-| 1   | `StationCode`    | chr         |                                                         |
-| 2   | `FireDistance`   | dbl         |                                                         |
-| 3   | `latitude`       | dbl         |                                                         |
-| 4   | `longitude`      | dbl         |                                                         |
-| 5   | `Elevation`      | dbl         |                                                         |
-| 6   | `EcoregionCode`  | chr         |                                                         |
-| 7   | `Ecoregion`      | chr         |                                                         |
-| 8   | `FIRE_YEAR`      | dbl         |                                                         |
-| 9   | `FIRE_NAME`      | chr         |                                                         |
-| 10  | `FIRE_START`     | S3: POSIXct |                                                         |
-| 11  | `FIRE_CONTAINED` | S3: POSIXct |                                                         |
-| 12  | `GIS_ACRES`      | dbl         |                                                         |
-| 13  | `vistdate`       | S3: POSIXct | CRAM visit date?                                        |
-| 14  | `Pair_ID`        | chr         | If present, has matching CRAM site (within x distance?) |
-
-#### Questions about this data
-
--   i noticed that the control set includes the fire station codes (though doesn’t include some of the CRAM site metadata) - is that intentional or should I just filter those out?
-
--   I noticed that for the water stations within the fire, you matched it up to the cram site if applicable - should we do the same for the control stations, or were there none?
-
--   a question about the pair_Id in the water stations for fire - i think some of them match the control CRAM data if I’m not mistaken? but I think they should all be fire, right?
-
-```{r}
-
-```
-
-#### Questions about this data
-
--   What is Prox_ID?
-
-## Confidence Checks
-
-```{r}
-
-# 
-# # All Water Stations should have a unique code.
-# validate_that(
-#   water_stations$StationCode |> unique() |> length() == water_stations$StationCode |> length(),
-#   msg = 'All Water Stations do not have a unique code'
-#   )
-# 
-# # maybe not needed
-# validate_that(
-#   water_stations.Fire |>
-#     filter(StationCode %in% water_stations.Control$StationCode) |>
-#     length()
-#   == 0,
-#   msg = "Water Stations in control and water stations in fire are not exclusive."
-# )
-# 
-# validate_that(
-#   FALSE,
-#   msg = "There should be one row per water station in the mapping"
-# )
-
-```
-
 ## Clean Data
 
 1.  Get only WQ data for applicable Water Stations
 
 ```{r}
-water_quality = water_quality |> filter(station_code %in% water_stations$station_code)
+water_quality = water_quality |> 
+  filter(station_code %in% water_stations$station_code) |> 
+  filter(analyte != "Nitrogen, Inorganic, Total")
+```
+
+2.  Get selected analytes names
+
+```{r}
+analytes_of_interest = water_quality$analyte |> unique()
 ```
 
 2.  Set target date for water station measurements
+
+    nearest to the target date
 
 ```{r}
 assert(
@@ -274,7 +166,99 @@ assert(
   msg = 'All Water Stations should have an associated fire'
   )
 
-target_date_distance = dmonths(6)
+
+start_date = min(water_quality$sample_date_time)
+end_date = max(water_quality$sample_date_time)
+
+  
+create_date_dataframe = function(date_interval, start_date, end_date) {
+  day_interval = interval(start_date,end_date)/date_interval
+  dates = start_date + 0:day_interval*date_interval
+  next_date = dates + date_interval
+
+  
+  date_df = as.data.frame(dates) |> 
+    rename(date = dates) |> 
+    mutate(date = as.Date(date),
+           next_date = as.Date(next_date)) |> 
+    mutate(date_interval = interval(date, next_date)) 
+  
+  print(date_df)
+}
+
+dates = create_date_dataframe(dmonths(1), start_date, end_date)
+
+station_codes = water_stations |> select(c(station_code)) |> 
+  unique()
+
+water_station_observations = tidyr::crossing(station_codes, dates)
+
+water_station_observations
+```
+
+```{r}
+
+map_date_to_most_recent_fire = function(water_station_observations, water_stations) {
+  most_recent_fire = inner_join(
+    water_station_observations,
+    water_stations,
+    by = join_by(
+      station_code,
+      closest(date >= fire_start)
+    )
+  ) |> rename(
+    previous_fire_start = fire_start,
+    previous_fire_name = fire_name,
+    previous_fire_contained = fire_contained
+  )
+  
+  next_fire = inner_join(
+    water_station_observations, 
+    water_stations,
+    by = join_by(
+      station_code,
+      closest(date < fire_start)
+    )
+  ) |> rename(
+    next_fire_start = fire_start,
+    next_fire_name = fire_name,
+    next_fire_contained = fire_contained
+  ) |> select(c(
+    station_code,
+    date,
+    next_fire_start,
+    next_fire_name,
+    next_fire_contained
+  ))
+  
+  inner_join(
+    most_recent_fire,
+    next_fire,
+    by = join_by(
+      station_code,
+      date
+    )
+  )
+}
+
+map = map_date_to_most_recent_fire(water_station_observations = water_station_observations |> filter(station_code == "11-331" | station_code == "405BRCAMS"), water_stations)
+```
+
+```{r}
+
+filter(water_station_observations, dates %in% water_stations$fire_start)
+
+
+class(water_stations$fire_start)
+class(as.Date(water_quality$sample_date_time))
+
+
+
+
+
+
+
+#####
 
 water_station_observations = water_stations |>
   pivot_longer(
@@ -439,12 +423,16 @@ valid_water_quality = water_station_observations |>
    msg = "Should be no NAs"
  )
  
- assert(sum(is.na( (optimized_water_quality |> pivot_wider(
-   id_cols = c(station_code, analyte),
-   names_from = target_date_type,
-   values_from = result
- )))) == 0,
- msg = "There should be no missing results"
+ assert(
+   sum(is.na( 
+     (optimized_water_quality |> 
+        pivot_wider(
+          id_cols = c(station_code, analyte),
+          names_from = target_date_type,
+          values_from = result
+        ))
+     )) == 0,
+    msg = "There should be no missing results"
  )
 
 ```
@@ -452,84 +440,61 @@ valid_water_quality = water_station_observations |>
 ## Select Analytes
 
 ```{r}
+ANALYTE_SELECTION_STRATEGY = "of-interest"
+```
 
-analytes_count = optimized_water_quality |>
-  group_by(station_code) |> 
-  count(analyte) 
-
-analytes_count_wide = analytes_count |>
-  pivot_wider(
-    id_cols = c(station_code),
-    names_from = analyte,
-    values_from = n
-  )
-analytes_count_matrix = data.matrix(analytes_count_wide[,2:length(analytes_count_wide)])
-
-rownames(analytes_count_matrix) = analytes_count_wide$station_code
-
-analytes_count_matrix[is.na(analytes_count_matrix)] = 0
-analytes_count_matrix[analytes_count_matrix > 0] = 1
-
-analytes_count_matrix |> View()
-
-# How many stations-timeframes have this analyte? 
-most_measured_analyte_num_stations = max(colSums(analytes_count_matrix))
-most_measured_station_num_analytes = max(rowSums(analytes_count_matrix))
-
-
-minNumStationsWithAnalyte = min(colSums(analytes_count_matrix))
-minNumAnalytesAtStation = min(rowSums(analytes_count_matrix)) 
-
-while(0 %in% analytes_count_matrix) {
- if ( minNumStationsWithAnalyte > 0 & 
-  minNumAnalytesAtStation > 0 & minNumStationsWithAnalyte <= minNumAnalytesAtStation) {
-  colsToKeep = colSums(analytes_count_matrix) != minNumStationsWithAnalyte
+```{r}
+if (ANALYTE_SELECTION_STRATEGY == "of-interest") {
+  analytes_of_interest = c("Total Dissolved Solids, Dissolved",
+                         "Total Organic Carbon, Total",
+                         "Phosphorus as P, Total", 
+                         "Oxygen, Dissolved, Total",
+                         "Nitrogen, Total, Total"  
+                         )
   
-  print(paste('Dropping', length(colsToKeep[!colsToKeep]), 'of', length(colsToKeep), 'analytes:')) 
-  print(names(colsToKeep)[!colsToKeep])
+  optimized_water_quality |> filter(analyte %in% analytes_of_interest)
+} 
+```
 
-  analytes_count_matrix = analytes_count_matrix[,colsToKeep] 
+```{r}
+if(ANALYTE_SELECTION_STRATEGY == "reduce" & F) {
+  final_set = select_analytes_and_replicates_by_reduce(
+    optimized_water_quality = optimized_water_quality
+    )
 } else {
-  rowsToKeep = rowSums(analytes_count_matrix) != minNumAnalytesAtStation
-  
-  print(paste('Dropping', length(rowsToKeep[!rowsToKeep]), 'of', length(rowsToKeep), 'stations:')) 
-  print(names(rowsToKeep)[!rowsToKeep])
-
-  analytes_count_matrix = analytes_count_matrix[rowsToKeep,]
+  final_set =  list("analytes" = c("Total Dissolved Solids, Dissolved",
+                         "Total Organic Carbon, Total",
+                         "Phosphorus as P, Total", 
+                         "Oxygen, Dissolved, Total",
+                         "Nitrogen, Total, Total"  
+                         ),
+                    "replicates" = optimized_water_quality |> filter(analyte %in% analytes_of_interest) |> group_by(station_code)
+                    |> select(station_code) |> unique()
+  )
 }
-
-    
-  minNumStationsWithAnalyte = min(colSums(analytes_count_matrix))
-minNumAnalytesAtStation = min(rowSums(analytes_count_matrix)) 
-}
-
 ```
 
 ### 
 
 ```{r}
-water_station_observations_refined = 
-  as.data.frame(analytes_count_matrix) |>
-  mutate(station_code = rownames(analytes_count_matrix)) |> 
-  pivot_longer(cols = !station_code, names_to = "analyte") |> 
-  left_join(optimized_water_quality, by = join_by(station_code, analyte)) |> 
-  left_join(water_stations)
-
-water_station_observations_refined |> filter(is.na(result))
-
-optimized_analytes_results = water_station_observations_refined |> pivot_wider(
-    id_cols = c(station_code, target_date_type, fire_history_type),
-    names_from = analyte,
-    values_from = result
-) 
-
-analytes_results_matrix = data.matrix(optimized_analytes_results[,3:length(optimized_analytes_results)])
-rownames(analytes_results_matrix) = paste(optimized_analytes_results$station_code, optimized_analytes_results$target_date_type,
-optimized_analytes_results$fire_history_type,
-sep = "::")
-
+  # analytes_count_matrix should be all 1s
+  final_analytes = final_set$analytes
+  final_station_replicates = final_set$replicates
+  
+  filtered_water_quality = filter_water_quality_by_analyte_and_replicate(
+    analytes = final_analytes,
+    replicates = final_station_replicates,
+    id_cols = c('station_code'),
+    water_quality = optimized_water_quality
+  )
+  
+  analytes_results_matrix = create_analyte_matrix_with_results(
+    water_quality_for_replicates = filtered_water_quality,
+    id_cols = c("station_code")
+  )
+  
 assert(
-  sum(is.na(analytes_results_matrix)) == 0,
+  sum(is.na((analytes_results_matrix))) == 0,
   msg = "there should be no NAs in the results matrix"
 )
 ```
@@ -542,7 +507,7 @@ library(factoextra)
 
 
 # Way to do it so you can get eigenvalues/goodness of fit
-results_distance <- vegdist(analytes_results_matrix, method = "bray")
+results_distance <- vegdist(analytes_results_matrix, method = "euclidean")
 
 results_pca = prcomp(results_distance, scale = TRUE)
 
@@ -561,3 +526,14 @@ fviz_pca_ind(
   repel = TRUE     # Avoid text overlapping
 )
 ```
+
+Jazzmyn
+
+-   units and
+
+-   Viewing the analyte data in a better way
+
+    -   
+
+1.  NMDS - environment variables, incorporate time
+2.  Time replicates of stations HOW
