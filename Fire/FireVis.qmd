@@ -57,38 +57,46 @@ ConfirmedSite %>%
 ```
 
 ```{r}
-#isolating columns of interest
-SmallSites <- ConfirmedSite[c(3:11)]
-
-#pivoting to analyze in grid
-pivot <- SmallSites %>%
-  pivot_longer(
-    cols= !Pair_ID,
-   names_to =  "Score_Type",
-   values_to = "Score"
-  )
+#Index grid
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=indexscore, color=`Fire/Control`)) +
+  geom_point() + 
+  geom_line(aes(group=Pair_ID)) +
+  facet_wrap(~ Group_ID) 
 
 ```
 
 ```{r}
-#isolating pairs
-G1 <- ConfirmedSite %>% filter(Group_ID == "1")
-G2 <- ConfirmedSite %>% filter(Group_ID == "2")
-G3 <- ConfirmedSite %>% filter(Group_ID == "3")
-G4 <- ConfirmedSite %>% filter(Group_ID == "4")
-G5 <- ConfirmedSite %>% filter(Group_ID == "5")
-G6 <- ConfirmedSite %>% filter(Group_ID == "6")
-G7 <- ConfirmedSite %>% filter(Group_ID == "7")
+#buffer grid
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=bufferlan, color=`Fire/Control`)) +
+  geom_point() + 
+  geom_line(aes(group=Pair_ID)) +
+  facet_wrap(~ Group_ID) 
 
-G1 %>%
-  ggplot(aes(x=`Pre/Post_Fire`, y=indexscore, color=`Fire/Control`)) +
-  geom_point() +
-  geom_line(aes(group=Pair_ID))
+```
 
-ConfirmedSite %>% 
-  ggplot(aes(x=`Pre/Post_Fire`, y=indexscore, shape='Fire/Control'))+
-  geom_point(aes(color=Group_ID)) +
-  scale_color_viridis(option = "D")+
-  geom_line(aes(group=Pair_ID))
+```{r}
+#hydrology grid
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=hydrology, color=`Fire/Control`)) +
+  geom_point() + 
+  geom_line(aes(group=Pair_ID)) +
+  facet_wrap(~ Group_ID) 
+
+```
+
+```{r}
+#physical grid
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=physical, color=`Fire/Control`)) +
+  geom_point() + 
+  geom_line(aes(group=Pair_ID)) +
+  facet_wrap(~ Group_ID) 
+
+```
+
+```{r}
+#biotic grid
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=biotic_str, color=`Fire/Control`)) +
+  geom_point() + 
+  geom_line(aes(group=Pair_ID)) +
+  facet_wrap(~ Group_ID) 
 
 ```
