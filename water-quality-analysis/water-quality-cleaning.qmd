@@ -37,26 +37,13 @@ assert = function(assertion, msg = msg) {
 water_stations_raw = readxl::read_excel(paste(RAW_DATA_FILE_PATH, 'WaterStationSites-3-5-24.xlsx', sep = ''))
 
 water_stations = water_stations_raw |> 
+  # rename all the columns used for analysis
   rename(
-    station_code = `StationCode`, # required for analysis
-    fire_start = `ALARM_DATE`, # required for analysis
-    fire_contained = `CONT_DATE`, # required for analysis
-    fire_name = `FIRE_NAME`
-    
-    # fire_distance = `FireDistance`,
-    # latitude = `latitude`,
-    # longitude = `longitude`,
-    # elevation = `Elevation`,
-    # ecoregion_code = `EcoregionCode`,
-    # ecoregion = `Ecoregion`,
-    # fire_year = `FIRE_YEAR`,
-    # fire_name = `FIRE_NAME`,
-    # fire_start = `FIRE_START`,
-    # fire_contained = `FIRE_CONTAINED`,
-    # gis_acres = `GIS_ACRES`,
-    # prox_id = `Prox_ID`,
-    # fire_history_type = `Type`,
-    # water_station_id = `WaterStation_ID`,
+    station_code = `StationCode`,
+    fire_start = `ALARM_DATE`, 
+    fire_contained = `CONT_DATE`, 
+    fire_name = `FIRE_NAME`,
+    fire_distance = `FireDistance`
 ) |> 
   mutate(
     fire_start = ymd(fire_start),
@@ -70,19 +57,13 @@ water_stations = water_stations_raw |>
 water_quality_raw = read_tsv(paste(RAW_DATA_FILE_PATH, "analytes.tsv", sep = ''))
 
 water_quality = water_quality_raw |> rename(
-  station_code = `StationCode`, # required for analysis
-  collection_depth = `CollectionDepth`,  
-  unit_collection_depth = `UnitCollectionDepth`, 
-  analyte = `Analyte`,             # required for analysis
-  unit = `Unit`,           # required for analysis
+  # rename all the columns used for analysis
+  station_code = `StationCode`, 
+  analyte = `Analyte`,             
+  unit = `Unit`,           
   result = `Result`,        
-  latitude = `latitude`,           
-  longitude = `longitude`,   
-  position_water_column = `PositionWaterColumn`,
-  huc12_name = `Huc12_name`,  
-  huc12_number = `Huc12_number`,  
-  sample_date = `SampleDate`, # required for analysis
-  collection_time = `CollectionTime` # required for analysis
+  sample_date = `SampleDate`, 
+  collection_time = `CollectionTime`, 
   ) |>  
   mutate(sample_date_time = mdy_hms(sample_date))
 
@@ -95,81 +76,49 @@ water_quality = water_quality |>
 
 ```
 
-### CRAM Sites / CRAM Measurements
-
-These are stored in a single table
-
-```{r}
-cram_measurements_raw = readxl::read_excel(paste(RAW_DATA_FILE_PATH, "FinalizedCramSites-2-26-24.xlsx", sep = '')) 
-
-cram_measurements = cram_measurements_raw |> 
-  rename(
-    ecram_id                = `ecramid`,
-    visit_date              = `visitdate`,
-    fire_history_type       = `Fire/Control`,
-    time_relative_to_fire   = `Pre/Post_Fire`,
-    group_id                = `Group_ID`,
-    pair_id                 = `Pair_ID`,
-    index_score             = `indexscore`,
-    buffer_lan              = `bufferlan`,
-    hydrology               = `hydrology`,
-    physical                = `physical`,
-    biotic_str              = `biotic_str`,
-    year                    = `YEAR_`,
-    fire_name               = `FIRE_NAME`,
-    alarm_date              = `ALARM_DATE`,
-    cont_date               = `CONT_DATE`,
-    us_l4code               = `US_L4CODE`,
-    us_l4name               = `US_L4NAME`,
-    nearest_fire            = `NearestFire`,
-    near_fid                = `NEAR_FID`,
-    site_id                 = `SITE_ID`,
-    prox_id                 = `PROX_ID`,
-    shape_length            = `SHAPE_Length`,
-    shape_area              = `SHAPE_Area`,
-    mountain_range          = `MountainRange`,
-    time_interval_elevation = `TimeInterval/Elevtation`,
-  ) |> 
-
-  # format date
-  mutate(
-    visit_date = ymd(visit_date),
-    alarm_date = ymd(alarm_date),
-    cont_date = ymd(cont_date)
-    
-  ) 
-```
-
 ## Clean Data
 
-1.  Get only WQ data for applicable Water Stations
+1.  Get only water quality for appropriate stations
 
 ```{r}
 water_quality = water_quality |> 
-  filter(station_code %in% water_stations$station_code) |> 
-  filter(analyte != "Nitrogen, Inorganic, Total")
+  filter(station_code %in% water_stations$station_code)
 ```
 
-2.  Get selected analytes names
+2.  Inspect differences in units
+
+```{r}
+water_quality |> group_by(analyte, unit) |> 
+  summarise(
+    count = n()
+  )
+```
+
+3.  There are only 29 of 3135 phosphorus measurements that are not mg/L, and since it is dry weight, we can't easily convert, so we'll drop the measurements that are not m/L
+
+```{r}
+water_quality = water_quality |> 
+  # drop inorganic nitrogen
+  filter(analyte != "Nitrogen, Inorganic, Total") |> 
+  
+  # drop phosphorus with uncommon units
+  filter(!(analyte == "Phosphorus as P, Total" & unit != "mg/L")
+  )
+```
+
+4.  Get selected analytes names
 
 ```{r}
 analytes_of_interest = water_quality$analyte |> unique()
 ```
 
-2.  Set target date for water station measurements
+## Create sets of analytes
 
-    nearest to the target date
+1.  Create a site-interval with the desired time interval
 
 ```{r}
-assert(
-  water_stations |> filter(is.na(fire_name)) |> nrow() == 0,
-  msg = 'All Water Stations should have an associated fire'
-  )
-
-
 start_date = min(water_quality$sample_date_time)
 end_date = max(water_quality$sample_date_time)
-
   
 create_date_dataframe = function(date_interval, start_date, end_date) {
   day_interval = interval(start_date,end_date)/date_interval
@@ -178,325 +127,186 @@ create_date_dataframe = function(date_interval, start_date, end_date) {
 
   
   date_df = as.data.frame(dates) |> 
-    rename(date = dates) |> 
-    mutate(date = as.Date(date),
-           next_date = as.Date(next_date)) |> 
-    mutate(date_interval = interval(date, next_date)) 
+    rename(interval_start = dates) |> 
+    mutate(interval_start = as.Date(interval_start),
+           interval_end = as.Date(next_date)) |> 
+    mutate(date_interval = interval(interval_start, interval_end)) 
   
-  print(date_df)
+  date_df
 }
 
-dates = create_date_dataframe(dmonths(1), start_date, end_date)
+dates = create_date_dataframe(dmonths(3), start_date, end_date)
 
 station_codes = water_stations |> select(c(station_code)) |> 
   unique()
 
-water_station_observations = tidyr::crossing(station_codes, dates)
-
-water_station_observations
+water_station_intervals = tidyr::crossing(station_codes, dates)
 ```
 
-```{r}
-
-map_date_to_most_recent_fire = function(water_station_observations, water_stations) {
-  most_recent_fire = inner_join(
-    water_station_observations,
-    water_stations,
-    by = join_by(
-      station_code,
-      closest(date >= fire_start)
-    )
-  ) |> rename(
-    previous_fire_start = fire_start,
-    previous_fire_name = fire_name,
-    previous_fire_contained = fire_contained
-  )
-  
-  next_fire = inner_join(
-    water_station_observations, 
-    water_stations,
-    by = join_by(
-      station_code,
-      closest(date < fire_start)
-    )
-  ) |> rename(
-    next_fire_start = fire_start,
-    next_fire_name = fire_name,
-    next_fire_contained = fire_contained
-  ) |> select(c(
-    station_code,
-    date,
-    next_fire_start,
-    next_fire_name,
-    next_fire_contained
-  ))
-  
-  inner_join(
-    most_recent_fire,
-    next_fire,
-    by = join_by(
-      station_code,
-      date
-    )
-  )
-}
-
-map = map_date_to_most_recent_fire(water_station_observations = water_station_observations |> filter(station_code == "11-331" | station_code == "405BRCAMS"), water_stations)
-```
+2.  Use a rolling join to join water quality with most recent fire
 
 ```{r}
-
-filter(water_station_observations, dates %in% water_stations$fire_start)
-
-
-class(water_stations$fire_start)
-class(as.Date(water_quality$sample_date_time))
-
-
-
-
-
-
-
-#####
-
-water_station_observations = water_stations |>
-  pivot_longer(
-    cols = c(fire_start, fire_contained),
-    names_to = "fire_date_type",
-    values_to = "fire_date"
-  ) |> 
-  mutate(
-    target_date_type = case_when(
-      fire_date_type == 'fire_start' ~ "pre",
-      fire_date_type == 'fire_contained' ~ "post",
-    )
-  ) |> 
-  # determining target date in separate mutation in case this changes
-  mutate(
-    target_date = case_when(
-      target_date_type == "pre" ~ as.Date(fire_date - target_date_distance),
-      target_date_type == "post" ~ as.Date(fire_date + target_date_distance)
-    )
-  )
-```
-
-3.  Normalize analytes
-
-```{r}
-
-## clean up units per analyte 
-
-analytes = water_quality |> 
-  select(c(analyte, unit)) |>
-  group_by(analyte) |> 
-  reframe(
-    unit = unique(unit)
-  ) 
-
-duplicate_analytes = analytes |> 
-  group_by(analyte) |> 
-  filter(n() > 1)
-
-assert(
-  duplicate_analytes |> nrow() == 0,
-  msg = "Analytes should not have more than one unit"
-)
-
-analytes
-```
-
-4.  Determine fire and target date for water quality data
-
-```{r}
-
-assert(
-  water_stations$station_code |> length() == water_stations$station_code |> unique() |> length(),
-  msg = "water stations should have unique codes"
-)
-
-assert(
-  water_station_observations$station_code |> length() == water_stations$station_code |> length() * 2,
-  msg = "there should be twice as many observations as stations"
-)
-
-assert(
-  water_quality |> filter(
-  !(water_quality$station_code %in% water_stations$station_code)
-) |> nrow() == 0 &
-water_stations |> filter(
-  !(water_stations$station_code %in% water_quality$station_code)
-) |> nrow() == 0
-, msg = "There should be no station codes that are only in one set"
-)
-
-TARGET_DATE_BUFFER = dyears(5)
-
-valid_water_quality = water_station_observations |> 
-  left_join(
+map_analyte_to_most_recent_fire = function(water_quality, water_stations) {
+  analytes_with_most_recent_fire = inner_join(
     water_quality |> 
-      select(-c(latitude, longitude)), 
-    by = join_by(station_code), 
-    relationship = "many-to-many"
-  ) |> 
-  filter(
-    fire_date_type == "fire_start" & sample_date_time < fire_date |
-    fire_date_type == "fire_contained" & sample_date_time > fire_date) |> 
-  mutate(
-    distance_from_target_date = abs(sample_date_time - as_datetime(target_date))
-  ) |> 
-  filter(distance_from_target_date < TARGET_DATE_BUFFER) |> 
-  group_by(station_code, target_date_type, analyte) |>
-  filter(
-    distance_from_target_date == min(distance_from_target_date)
+      select(station_code, analyte, unit, sample_date_time, result),
+    water_stations |> 
+      select(station_code, fire_name, fire_start, fire_contained),
+    by = join_by(
+      station_code,
+      closest(sample_date_time >= fire_start)
+    )
+  ) |> mutate(
+    time_since_last_fire = case_when(
+      sample_date_time >= fire_contained ~ as.Date(sample_date_time) - fire_contained,
+      sample_date_time < fire_contained ~ ddays(0)
+    )
   )
-
- # sometimes there are multiple readings for the same time, date, and analyte
- # sometimes there different readings at surface vs subsurface
- valid_water_quality |>
-       select(colnames(water_quality)) |> 
-  filter(n() > 1) |> 
-  arrange(.by_group = T)
-
- # assert there is one per group
- assert(
-   valid_water_quality |>
-   filter(n() > 1) |> nrow() == 0,
-   msg = "There should be one analyte per group"
- )
   
-# for now just take the mean and investigate later
- mean_water_quality = valid_water_quality |> 
-   reframe(
-     result = mean(result)
-   )
- 
- # need to bring back the unit (fix this assertion)
- assert(
-   mean_water_quality$unit |> unique() |> length() > 0
- )
- 
- # strategy for analytes 
- STRATEGY = "post-only"
- if (STRATEGY == "pre-post-pairs") {
-    valid_stations_with_analytes = mean_water_quality |> 
-       group_by(station_code, analyte) |> 
-       reframe(
-         timeframes = unique(target_date_type) |> length()
-       ) |> 
-       filter(timeframes > 1) |> 
-       select(station_code, analyte)
-              
-    optimized_water_quality = left_join(valid_stations_with_analytes, mean_water_quality, by = join_by(station_code, analyte))
-        
-    assert(
-        filter(
-          optimized_water_quality,
-          target_date_type == "pre"
-        ) |> 
-        nrow() == filter(
-          optimized_water_quality,
-          target_date_type == "post"
-        ) |> nrow(),
-      msg = "Should have same number pre and post"
+  analytes_with_most_recent_fire |> 
+    rename(
+      sample.previous_fire_name = fire_name,
+      sample.previous_fire_start = fire_start,
+      sample.previous_fire_contained = fire_contained,
+      sample.duration_since_last_fire = time_since_last_fire
     )
- } else if (STRATEGY == "post-only") {
-   valid_stations_with_analytes = mean_water_quality |> 
-     filter(target_date_type == "post") |> 
-     select(station_code, analyte, target_date_type)
-   
-    optimized_water_quality = left_join(valid_stations_with_analytes, mean_water_quality, by = join_by(station_code, analyte, target_date_type))
-    
-    assert(
-      optimized_water_quality |> 
-        filter(
-          target_date_type == "pre"
-        ) |> 
-        nrow() == 0,
-      msg = "Should exclude pre"
-    )
- }  
-
- 
- assert(
-   (sum(is.na(optimized_water_quality))) == 0,
-   msg = "Should be no NAs"
- )
- 
- assert(
-   sum(is.na( 
-     (optimized_water_quality |> 
-        pivot_wider(
-          id_cols = c(station_code, analyte),
-          names_from = target_date_type,
-          values_from = result
-        ))
-     )) == 0,
-    msg = "There should be no missing results"
- )
-
-```
-
-## Select Analytes
-
-```{r}
-ANALYTE_SELECTION_STRATEGY = "of-interest"
-```
-
-```{r}
-if (ANALYTE_SELECTION_STRATEGY == "of-interest") {
-  analytes_of_interest = c("Total Dissolved Solids, Dissolved",
-                         "Total Organic Carbon, Total",
-                         "Phosphorus as P, Total", 
-                         "Oxygen, Dissolved, Total",
-                         "Nitrogen, Total, Total"  
-                         )
-  
-  optimized_water_quality |> filter(analyte %in% analytes_of_interest)
-} 
-```
-
-```{r}
-if(ANALYTE_SELECTION_STRATEGY == "reduce" & F) {
-  final_set = select_analytes_and_replicates_by_reduce(
-    optimized_water_quality = optimized_water_quality
-    )
-} else {
-  final_set =  list("analytes" = c("Total Dissolved Solids, Dissolved",
-                         "Total Organic Carbon, Total",
-                         "Phosphorus as P, Total", 
-                         "Oxygen, Dissolved, Total",
-                         "Nitrogen, Total, Total"  
-                         ),
-                    "replicates" = optimized_water_quality |> filter(analyte %in% analytes_of_interest) |> group_by(station_code)
-                    |> select(station_code) |> unique()
-  )
 }
+
+water_quality_with_most_recent_fire = map_analyte_to_most_recent_fire(water_quality, water_stations)
 ```
 
-### 
+3.  rolling join to match water_station interval with most recent fire
 
 ```{r}
-  # analytes_count_matrix should be all 1s
-  final_analytes = final_set$analytes
-  final_station_replicates = final_set$replicates
-  
-  filtered_water_quality = filter_water_quality_by_analyte_and_replicate(
-    analytes = final_analytes,
-    replicates = final_station_replicates,
-    id_cols = c('station_code'),
-    water_quality = optimized_water_quality
+
+water_stations_with_recent_fire = inner_join(
+    water_station_intervals,
+    water_stations,
+    by = join_by(
+      station_code,
+      # can get two dates if a fire has the same start day
+      closest(interval_start >= fire_start)
+    )
+  ) |> rename(
+    site_interval.previous_fire_start = fire_start,
+    site_interval.previous_fire_name = fire_name,
+    site_interval.previous_fire_contained = fire_contained
   )
-  
-  analytes_results_matrix = create_analyte_matrix_with_results(
-    water_quality_for_replicates = filtered_water_quality,
-    id_cols = c("station_code")
+```
+
+4.  match water quality measurement with water station / interval. If the water quality measurement has a most recent fire that is more recent than the interval start, set the interval start for that row to the most recent fire, and treat it as a different interval
+
+```{r}
+water_quality_for_observation = inner_join(
+  water_quality_with_most_recent_fire,
+  water_stations_with_recent_fire,
+  by = join_by(
+    station_code,
+    closest(sample_date_time >= interval_start)
   )
-  
-assert(
-  sum(is.na((analytes_results_matrix))) == 0,
-  msg = "there should be no NAs in the results matrix"
+) |> 
+  # Create a new interval when the sample previous fire date is different from the site previous fire date - this happens if there was a fire since the interval started
+  mutate(
+  interval_start = case_when(
+    site_interval.previous_fire_start != sample.previous_fire_start ~ sample.previous_fire_start,
+    .default = interval_start
+  ),
+  site_interval.previous_fire_start = case_when(
+    site_interval.previous_fire_start != sample.previous_fire_start ~ sample.previous_fire_start,
+    .default = site_interval.previous_fire_start
+  )
 )
+
+```
+
+5.  Get average analyte per interval
+    -   Station code
+    -   interval_start
+    -   analyte
+
+```{r}
+group_water_quality_by = function(water_quality_for_observation) {
+  water_quality_for_observation |> 
+    group_by(
+      station_code,
+      date_interval,
+      interval_start,
+      analyte,
+      unit,
+    )
+}
+
+assert(water_quality_for_observation |> 
+  group_by(
+    station_code, 
+    date_interval, 
+    interval_start,
+    analyte,
+  ) |> n_groups() == water_quality_for_observation |> 
+  group_water_quality_by() |> n_groups())
+
+
+
+mean_water_quality_for_observation = water_quality_for_observation |> 
+  # dropped the ones that are after the interval start for now
+  filter(interval_start == int_start(date_interval)) |> 
+  group_water_quality_by() |> 
+  summarise(
+    result = mean(result),
+    last_fire_start = unique(site_interval.previous_fire_start),
+    last_fire_contained = max(site_interval.previous_fire_contained),
+    last_fire_distance = min(fire_distance)
+  ) |> ungroup() |> 
+  mutate(
+    time_since_last_fire = case_when(
+      interval_start > last_fire_contained ~ interval_start - last_fire_contained,
+      .default = ddays(0)
+    )
+  )
+
+stations_with_analytes = mean_water_quality_for_observation |> 
+  pivot_wider(
+    id_cols = c(
+      station_code, 
+      date_interval, 
+      interval_start, 
+      last_fire_start, 
+      last_fire_contained, 
+      time_since_last_fire,
+      last_fire_distance),
+    names_from = analyte,
+    values_from = result) |> 
+  rename(
+    phosphorus_mg_l = "Phosphorus as P, Total",
+    dissolved_organic_carbon_mg_l = "Dissolved Organic Carbon, Dissolved",
+    total_suspended_solids_mg_l = "Total Suspended Solids, Total",
+    nitrogen_organic_mg_l = "Nitrogen, Organic, Total"
+  ) |> select(
+    -c(nitrogen_organic_mg_l, phosphorus_mg_l) 
+  ) |>
+  filter(
+    !is.na(total_suspended_solids_mg_l) &
+    !is.na(dissolved_organic_carbon_mg_l) &
+    !is.na(pH)    
+    ) 
+```
+
+1.  Tweak: Fire cutoff?
+
+```{r}
+multivariate_df = stations_with_analytes |> 
+  mutate(
+    site_id = paste(station_code, date_interval, sep=":")
+    ) |> 
+  select(
+    site_id, last_fire_distance, time_since_last_fire, dissolved_organic_carbon_mg_l, pH, total_suspended_solids_mg_l 
+  )
+
+multivariate_matrix = as.matrix(multivariate_df[2:ncol(multivariate_df)])
+
+nrow(multivariate_matrix)
+rownames(multivariate_matrix) = multivariate_df$site_id
+
 ```
 
 ## PCA
@@ -507,9 +317,9 @@ library(factoextra)
 
 
 # Way to do it so you can get eigenvalues/goodness of fit
-results_distance <- vegdist(analytes_results_matrix, method = "euclidean")
+results_distance <- vegdist(multivariate_matrix, method = "euclidean")
 
-results_pca = prcomp(results_distance, scale = TRUE)
+results_pca = prcomp(multivariate_matrix, scale = TRUE)
 
 fviz_eig(results_pca)
 
