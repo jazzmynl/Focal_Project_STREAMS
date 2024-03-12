@@ -10,15 +10,151 @@ editor: visual
 Load the Primary Dataframe
 
 ```{r}
-load("Veg/CRAM_Plant_Primary.Rdata")
+load("CRAM_Plant_Primary.Rdata")
 ```
 
 Load packages
 
 ```{r}
 library(tidyverse)
+library(readxl)
+library(vegan)
 ```
 
 ```{r}
-Veg_Primary <- CRAM_PlantJoin
+Veg_Primary <- CRAM_PlantJoin 
+
+Species_List <- Veg_Primary |>
+  select(Final_ID, ecramid)
+
+
+Species_wide <- Species_List |> 
+  mutate(Present = 1) |> 
+  pivot_wider(names_from = Final_ID, values_from = Present, values_fn = sum, values_fill = 0)
+     #takes columns and turns them into rows which shortens the number of rows (makes into dataframe format)
+Species_wide
+
+
+ Species_matrix <- Species_wide[2:ncol(Species_wide)] |> 
+  as.matrix()
+
+rownames(Species_matrix) <- Species_wide$ecramid
+
+
+Species_matrix
+#Species_Transpose <- t(Species_List) 
+#View(Species_matrix)
 ```
+
+```{r}
+Species_List |>
+  group_by(ecramid) |>
+  count()
+```
+
+```{r}
+#ggplot(Species_List) + 
+  #aes(x = ecramid, y = , fill = Final_ID) +
+  #geom_bar() + 
+  #labs(x = "ECRAM site IDs", 
+       #y = "Species Abundance") +
+  #facet_grid(ecramid~.)
+  
+```
+
+```{r}
+#Try Jaccard or Bray-Curtis index
+
+transpose <- t(Species_matrix)
+1 - vegdist(transpose, method = "jaccard")
+
+1 - vegdist(transpose, method = "bray")
+```
+
+Do an NMDS, PCA or PCoA
+
+Step 1
+
+```{r}
+ecramid.nmds <- metaMDS(Species_matrix, distance = "man")
+# same options for distance as vegdist
+
+
+```
+
+plot for preliminary assessment
+
+```{r}
+plot(ecramid.nmds, type = "t", display = "species")
+
+plot(ecramid.nmds, type = "p", display = c("site", "species"))
+```
+
+Extract scores
+
+Insert fire history data
+
+```{r}
+Fire_History_load <- read_xlsx("NEW_CRAM_SITES4.xlsx")
+
+Fire_History_Clean <- Fire_History_load |>
+  select(ecramid,`Fire/Control`, `Pre/Post_Fire`, FIRE_NAME)
+
+Fire_Join <- left_join(Species_List, Fire_History_Clean)
+
+```
+
+native/non-native is "invasive" score (0/1)
+
+filter in site data (comparing pre-fire and post-fire)
+
+```{r}
+scores(ecramid.nmds)
+
+ecramid_site_scores <- 
+  data.frame(scores(ecramid.nmds)$sites) |> 
+  mutate(Site = rownames(scores(ecramid.nmds)$sites))  
+  #separate(Site, into = c("invasive", "Final_ID"), sep = "_")
+
+
+ecramid_species_scores <- 
+  data.frame(scores(ecramid.nmds)$species) |>
+  mutate(Species = rownames(scores(ecramid.nmds)$species))
+```
+
+Plots
+
+```{r}
+ecramid_NMDS_plot <- ggplot() + 
+  geom_text(data = ecramid_site_scores, aes(x = NMDS1, y = NMDS2, label = Site, color = Site), cex = 3) + 
+  geom_point(data = ecramid_species_scores, aes(x = NMDS1, y = NMDS2, label = Species))
+
+ecramid_NMDS_plot
+```
+
+plotting with hulls
+
+```{r}
+grp.Nat <- ecramid_site_scores[ecramid_site_scores$Native == "NATIVE", ][chull(ecramid_site_scores[ecramid_site_scores$Native == 
+    "NATIVE", c("NMDS1", "NMDS2")]), ]  # hull values for grp A
+grp.NonNat <- ecramid_site_scores[Site_scores$Native == "NN", ][chull(Site_scores[Site_scores$Native == 
+    "NN", c("NMDS1", "NMDS2")]), ]  # hull values for grp B
+
+hull.data <- rbind(grp.Nat, grp.NonNat)  #combine grp.a and grp.b
+hull.data
+
+
+NMDS_plot + 
+  geom_polygon(data = hull.data, aes(x = NMDS1, y = NMDS2, color = Native, fill = Native), alpha = 0.1)
+```
+
+#potential later maps - color-code site locations by pre-fire/post-fire to compare
+
+DID SOMEONE ON THE TEAM ADD SOME FILES?
+
+1.  Switch to main and "Pull"
+2.  Switch BACK to IZZYs branch and run:
+
+git fetch -–all
+
+git fetch origin/main

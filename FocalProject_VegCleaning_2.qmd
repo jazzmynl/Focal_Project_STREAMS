@@ -207,7 +207,7 @@ write_clip(CRAM_PlantJoin)
 
 Saving the Primary Cleaned Veg file to a new .Rdata object
 ```{r}
-save(file ="Veg/CRAM_Plant_Primary.Rdata",CRAM_PlantJoin)
+save(file ="CRAM_Plant_Primary.Rdata",CRAM_PlantJoin)
 ```
 
 
