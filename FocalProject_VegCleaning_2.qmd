@@ -38,6 +38,7 @@ library(fuzzyjoin)
 ```
 
 Import all the data
+
 ```{r}
 Veg <- read_csv("Veg/ecoatlas_wetlandcondition_plants.csv")
 
@@ -56,12 +57,14 @@ NEW_CRAM_Sites <-
 ```
 
 Filter down the plants data to only the sites in the New Cram Sites file
+
 ```{r}
 Site_plants <- ecoatlas_wetlandcondition_plants %>% 
   filter(ecramid %in% NEW_CRAM_Sites$ecramid)
 ```
 
 Garrett's very elaborate spell check package (neat-o)
+
 ```{r}
 taxa_table <- Site_plants
 
@@ -170,6 +173,7 @@ Absent_taxa <- Missing_TOL
 ```
 
 Joining the corrected species names to the original data set and getting rid of the old species column
+
 ```{r}
 # CRAM_PlantJoin <- left_join(Site_plants, select(SpellChange, SpellChange), by = c("scientificname" = "OriginalName"))
 CRAM_PlantJoin <- left_join(Site_plants, SpellChange, by = c("scientificname" = "OriginalName"))
@@ -184,8 +188,8 @@ CRAM_PlantJoin$Final_ID <- ifelse(is.na(CRAM_PlantJoin$SpellChange), CRAM_PlantJ
 CRAM_PlantJoin$Final_ID <- ifelse(is.na(CRAM_PlantJoin$Synonym), CRAM_PlantJoin$Final_ID, CRAM_PlantJoin$Synonym)
 ```
 
-
 Adding a column for the taxonomic rank (species, genus etc.)
+
 ```{r}
 # final species list
 list_taxa <- as.character(as.list(unique(CRAM_PlantJoin$Final_ID)))
@@ -204,10 +208,8 @@ CRAM_PlantJoin <- left_join(CRAM_PlantJoin, taxa_ranking2, by = "Final_ID")
 write_clip(CRAM_PlantJoin)
 ```
 
-
 Saving the Primary Cleaned Veg file to a new .Rdata object
+
 ```{r}
 save(file ="Veg/CRAM_Plant_Primary.Rdata",CRAM_PlantJoin)
 ```
-
-
