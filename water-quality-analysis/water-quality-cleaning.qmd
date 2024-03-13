@@ -5,7 +5,7 @@ format: html
 editor: visual
 ---
 
-### Import Libraries
+## Import Libraries
 
 ```{r}
 library(tidyverse)
@@ -15,12 +15,10 @@ library(vegan)
 source("utils.R")
 ```
 
-## Import Data
+## Setup Helpers
 
 ```{r}
-RAW_DATA_FILE_PATH = "water-quality-raw/"
 SHOULD_RUN_ASSERTIONS = T
-SHOULD_FILTER_ALL_WQ = T
 
 assert = function(assertion, msg = msg) {
   if(SHOULD_RUN_ASSERTIONS) {
@@ -30,6 +28,13 @@ assert = function(assertion, msg = msg) {
     )
   }
 }
+```
+
+## Import and Clean Data
+
+```{r}
+RAW_DATA_FILE_PATH = "water-quality-raw/"
+
 ```
 
 ### Water Station Fires
@@ -101,11 +106,6 @@ water_quality = water_quality |>
 
 ## Clean Data
 
-```{r}
-MAX_FIRE_DISTANCE = Inf
-DATE_INTERVAL = dmonths(1)
-```
-
 1.  Get only water quality for stations that we have data for
 
 ```{r}
@@ -148,17 +148,27 @@ analytes_of_interest = water_quality$analyte |> unique()
 
 ## Create sets of analytes
 
+Variables:
+
+```{r}
+MAX_FIRE_DISTANCE = Inf
+MAX_FIRE_TIME = 0
+DATE_INTERVAL = dmonths(1)
+```
+
 1.  Fire cutoff
 
     ```{r}
-    water_station_fires = water_station_fires |> 
-      filter(fire_distance < 1000)
+    fire_cutoff = function(water_station_fires, max_fire_distance) {
+      water_station_fires |>
+        filter(fire_distance < max_fire_distance)
+    }
     ```
 
 2.  Create a site-interval with the desired time interval
 
     ```{r}
-    create_date_dataframe = function(date_interval, water_quality) {
+    get_water_station_intervals = function(water_station_fires, date_interval, water_quality) {
       start_date = min(water_quality$sample_date_time)
       end_date = max(water_quality$sample_date_time)
 
@@ -167,25 +177,17 @@ analytes_of_interest = water_quality$analyte |> unique()
       next_date = dates + date_interval
 
       
-      date_df = as.data.frame(dates) |> 
+      dates = as.data.frame(dates) |> 
         rename(interval_start = dates) |> 
         mutate(interval_start = as.Date(interval_start),
                interval_end = as.Date(next_date)) |> 
         mutate(date_interval = interval(interval_start, interval_end)) 
-      
-      date_df
-    }
 
-    get_site_intervals = function(water_stations, dates) {
-      station_codes = water_stations |> select(c(station_code)) |> 
+        station_codes = water_station_fires |> select(c(station_code)) |> 
       unique()
 
       tidyr::crossing(station_codes, dates)
     }
-
-    dates = create_date_dataframe(DATE_INTERVAL, water_quality)
-
-    water_station_intervals = get_site_intervals(water_station_fires, dates)
     ```
 
 3.  Use a rolling join to join water quality with most recent fire
@@ -216,20 +218,22 @@ analytes_of_interest = water_quality$analyte |> unique()
           sample.duration_since_last_fire = time_since_last_fire
         )
     }
-
-    water_quality_with_most_recent_fire = map_analyte_to_most_recent_fire(water_quality, water_station_fires)
     ```
 
 4.  rolling join to match water_station interval with most recent fire
 
     ```{r}
-
-    water_stations_with_recent_fire = inner_join(
+    match_water_station_interval_to_most_recent_fire = function(
         water_station_intervals,
+        water_station_fires
+      ) {
+      
+      inner_join(
+        water_station_intervals, 
         water_station_fires,
         by = join_by(
           station_code,
-          # can get two dates if a fire has the same start day
+          # note - there are sometimes duplicate station intervals because of the closest issue 
           closest(interval_start >= fire_start)
         )
       ) |> rename(
@@ -237,7 +241,71 @@ analytes_of_interest = water_quality$analyte |> unique()
         site_interval.previous_fire_name = fire_name,
         site_interval.previous_fire_contained = fire_contained
       )
+    }
     ```
+
+5.  ksdf
+
+6.  
+
+```{r}
+do_the_thing = function(
+    water_stations,
+    water_station_fires,
+    water_quality,
+    max_fire_distance = Inf,
+    max_time_since_last_fire = Inf,
+    date_interval_for_observations
+) {
+  # 1. Filter out fires outside of fire cutoff, if applicable
+  water_station_fires = fire_cutoff(water_station_fires, max_fire_distance)
+  
+  # 2. Create a site-interval with desired time interval
+  water_station_intervals = get_water_station_intervals(water_station_fires, date_interval_for_observations, water_quality)
+  
+  # 3. 
+  water_quality_with_most_recent_fire = map_analyte_to_most_recent_fire(water_quality, water_station_fires)
+  
+  # 4. 
+  water_stations_with_recent_fire = match_water_station_interval_to_most_recent_fire(
+    water_station_intervals,
+    water_station_fires
+  )
+
+  
+  list(
+    "water_station_fires" = water_station_fires, 
+    "water_station_intervals"= water_station_intervals,
+    "water_quality_with_most_recent_fire" = water_quality_with_most_recent_fire,
+    "water_stations_with_recent_fire" = water_stations_with_recent_fire
+       )
+}
+```
+
+1.  Fire cutoff
+
+    ```{r}
+
+    result = do_the_thing(
+      water_stations, 
+      water_station_fires, 
+      water_quality,
+      max_fire_distance = 1000, 
+      max_time_since_last_fire = Inf,
+      date_interval_for_observations = DATE_INTERVAL
+      )
+
+    water_station_fires = result$water_station_fires
+    water_station_intervals = result$water_station_intervals
+    water_quality_with_most_recent_fire = result$water_quality_with_most_recent_fire
+    water_stations_with_recent_fire = result$water_stations_with_recent_fire
+    ```
+
+2.  Create a site-interval with the desired time interval
+
+3.  Use a rolling join to join water quality with most recent fire
+
+4.  rolling join to match water_station interval with most recent fire
 
 5.  match water quality measurement with water station / interval. If the water quality measurement has a most recent fire that is more recent than the interval start, set the interval start for that row to the most recent fire, and treat it as a different interval
 
