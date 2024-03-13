@@ -1,0 +1,333 @@
+---
+title: "tests"
+author: "Sully Riley"
+format: html
+editor: visual
+---
+
+### Import Libraries
+
+```{r}
+library(tidyverse)
+```
+
+## Import Data
+
+### Water Quality
+
+```{r}
+AllWQ_Raw <- read_csv("test-data/AllWQ.csv")
+
+AllWQ = AllWQ_Raw |> 
+  mutate(SampleDateTime = mdy_hms(SampleDate))
+
+hour(AllWQ$SampleDateTime) = hour(mdy_hms(AllWQ$CollectionTime))
+minute(AllWQ$SampleDateTime) = minute(mdy_hms(AllWQ$CollectionTime))
+second(AllWQ$SampleDateTime) = second(mdy_hms(AllWQ$CollectionTime))
+
+AllWQ = AllWQ |> 
+  select(-c(SampleDate, CollectionTime))
+
+```
+
+#### Questions
+
+None, all looks good
+
+### CRAM Sites / CRAM Measurements
+
+These are stored in a single table
+
+```{r}
+CRAMSites_Raw = read.csv('../ConfirmedSite.csv') |> 
+  mutate(visitdate = mdy(visitdate))
+
+write.csv(CRAMSites_Raw,
+          'test-data/ConfirmedSite.csv')
+
+CRAMSites = CRAMSites_Raw
+```
+
+#### Questions
+
+1.  Need a way to map CRAM Sites to Water Stations - is there a CRAM Site ID?
+
+### Water Stations
+
+#### Fire and Control Sites (?)
+
+```{r}
+WaterStationFireControlSites_Raw = read.csv('test-data/WaterStationFireControlSites.csv')
+```
+
+Seems to be all fire sites from above, plus control sites.
+
+##### Questions
+
+1.  What does Fire Distance mean? Some of the Fire types have a greater distance than control types.
+
+##### Notes
+
+1.  Some of these will not match to a CRAM site
+
+## Clean Data
+
+### Group measurements by nearest timeframe
+
+Could be week, month, season, year
+
+```{r}
+AllWQ = AllWQ #|> 
+  #mutate(Timeframe = floor_date(SampleDate, 'year'))
+
+AllWQ
+
+```
+
+Amy's suggestions
+
+```{r}
+# AllWQ |> 
+#   mutate(Year = year(mdy_hms(SampleDate))) |> 
+#   group_by(StationCode, Year) |> 
+#   count(Analyte) |> 
+#   arrange(n)
+
+# AllWQ |> 
+#   select(Analyte, StationCode) |> 
+#   distinct() |> 
+#   group_by(Analyte) |> 
+#   count() |> 
+#   arrange(-n)
+
+```
+
+### Select StationsWater Stations in Fire Range
+
+```{r}
+WaterStationFireSite_Raw = readxl::read_excel('water-quality-raw/WaterStationFireSites.xlsx')
+
+# # don't actually have a good one here - need from garrett 
+# WaterStationsCRAMMap = WaterStationFireSite_Raw |> 
+#   select(c(StationCode, visitdate, Pair_ID)) |> 
+#   filter(!(is.na(visitdate) & is.na(Pair_ID))) |> 
+#   mutate(Pair_ID = parse_number(Pair_ID) |> paste('a', sep = '')) |> 
+#   mutate(unique_visit_date_pair_id = paste(visitdate, Pair_ID, sep = '-'))
+# # this isn't working bc the pairIds are duplicated
+# x = left_join(CRAMSites, WaterStationsToCRAM)
+
+# WaterStations.Fire = WaterStationFireSite_Raw |> 
+#   select(-c(visitdate, Pair_ID)) |> 
+#   unique()
+```
+
+#### About this data:
+
+|     | Column Name      | Type        | Notes                                                   |
+|-----|------------------|-------------|---------------------------------------------------------|
+| 1   | `StationCode`    | chr         |                                                         |
+| 2   | `FireDistance`   | dbl         |                                                         |
+| 3   | `latitude`       | dbl         |                                                         |
+| 4   | `longitude`      | dbl         |                                                         |
+| 5   | `Elevation`      | dbl         |                                                         |
+| 6   | `EcoregionCode`  | chr         |                                                         |
+| 7   | `Ecoregion`      | chr         |                                                         |
+| 8   | `FIRE_YEAR`      | dbl         |                                                         |
+| 9   | `FIRE_NAME`      | chr         |                                                         |
+| 10  | `FIRE_START`     | S3: POSIXct |                                                         |
+| 11  | `FIRE_CONTAINED` | S3: POSIXct |                                                         |
+| 12  | `GIS_ACRES`      | dbl         |                                                         |
+| 13  | `vistdate`       | S3: POSIXct | CRAM visit date?                                        |
+| 14  | `Pair_ID`        | chr         | If present, has matching CRAM site (within x distance?) |
+
+#### Questions about this data
+
+-   i noticed that the control set includes the fire station codes (though doesn’t include some of the CRAM site metadata) - is that intentional or should I just filter those out?
+
+-   I noticed that for the water stations within the fire, you matched it up to the cram site if applicable - should we do the same for the control stations, or were there none?
+
+-   a question about the pair_Id in the water stations for fire - i think some of them match the control CRAM data if I’m not mistaken? but I think they should all be fire, right?
+
+```{r}
+
+```
+
+### Control Water Stations (out of fire range)
+
+```{r}
+WaterStations_Raw = read.csv("water-quality-raw/WaterStationFireControlSites.csv")
+
+WaterStations = WaterStations_Raw |> 
+  mutate(FIRE_START = mdy(FIRE_START),
+         FIRE_CONTAINED = mdy(FIRE_CONTAINED))
+```
+
+#### Questions about this data
+
+-   What is Prox_ID?
+
+### Confidence Checks
+
+```{r}
+library(assertthat)
+
+# All Water Stations should have a unique code.
+validate_that(
+  WaterStations$StationCode |> unique() |> length() == WaterStations$StationCode |> length(),
+  msg = 'All Water Stations do not have a unique code'
+  )
+
+# # maybe not needed
+# validate_that(
+#   WaterStations.Fire |> 
+#     filter(StationCode %in% WaterStations.Control$StationCode) |> 
+#     length() 
+#   == 0,
+#   msg = "Water Stations in control and water stations in fire are not exclusive."
+# )
+
+validate_that(
+  FALSE,
+  msg = "There should be one row per water station in the mapping"
+)
+
+```
+
+### Combine data
+
+```{r}
+WaterQuality = AllWQ |> filter(StationCode %in% WaterStations$StationCode) 
+
+WaterQuality = WaterQuality |> 
+  left_join(
+    WaterStations, join_by(StationCode)
+  ) |> 
+  mutate(DaysSinceFireStart = as.Date(SampleDateTime) - FIRE_START, 
+         DaysSinceFireContained = as.Date(SampleDateTime) - FIRE_CONTAINED) |>
+  mutate(TimeRelativeToFire = case_when(
+    DaysSinceFireStart < 0 ~ "pre", #before fire
+    DaysSinceFireContained > 0 ~ "post",
+    DaysSinceFireStart >= 0 & DaysSinceFireContained <= 0 ~ "post",
+    is.na(DaysSinceFireContained) & DaysSinceFireStart >= 0 ~ "post",
+    .default = NA
+  )) |> mutate(
+    TimeRelativeToFire = case_when(
+      TimeRelativeToFire == "pre" ~ "pre",
+      .default = "post"
+    )
+  )
+
+## not sure actually what to join here, assuminmg prox_id is site_id
+PLACEHOLDER = left_join(WaterQuality, CRAMSites, by=join_by(Prox_ID == SITE_ID, TimeRelativeToFire == Pre.Post_Fire))
+
+## assuming the above is correct, (it's not)
+## how do I find the closest 
+```
+
+```{r}
+TestDF = tibble(
+  StationCode = c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2),
+  TimeRelativeToFire = c("pre", "pre", "pre", "pre", "pre", "post", "post", "post", "post", "post", "post", "pre", "pre"),
+  Analyte = c("a", "a", "b", "b", "b", "a", "a", "a", "a", "a", "a", "a", "a" ),
+  visitdate = ("2012-01-01")
+)
+
+TestDF
+
+PLACEHOLDER |>
+  group_by(StationCode, TimeRelativeToFire, Analyte) |> 
+  summarize(
+    DiffFromTargetTime = min(abs(visitdate - as.Date(SampleDateTime)), na.rm = TRUE), 
+    Result = Result
+  ) |> 
+  arrange(DiffFromTargetTime) |> 
+  mutate(DiffFromTargetTime = min(abs(DiffFromTargetTime)))
+
+## all analytes at a station 
+
+
+```
+
+## Select Analytes
+
+### Get best analyte measurement
+
+Measurement should be:
+
+-   Closest to target date
+
+-   NOT on the other side of the fire start / end
+
+```{r}
+
+```
+
+### Select Analytes
+
+```{r}
+WaterQuality.Fire = AllWQ |> filter(StationCode %in% WaterStations.Fire$StationCode)
+
+Timepoints = WaterQuality.Fire |>
+  group_by(StationCode, Timeframe) |> 
+  count(Analyte) |>
+  pivot_wider(
+    id_cols = c(StationCode, Timeframe),
+    names_from = Analyte,
+    values_from = n
+  )
+
+Timepoints_Matrix = data.matrix(Timepoints[,3:length(Timepoints)])
+
+rownames(Timepoints_Matrix) = paste(Timepoints$StationCode, Timepoints$Timeframe, sep = "_")
+
+Timepoints_Matrix[is.na(Timepoints_Matrix)] = 0
+Timepoints_Matrix[Timepoints_Matrix > 0] = 1
+
+Timepoints_Matrix |> View()
+
+# How many stations-timeframes have this analyte? 
+
+minNumStationsWithAnalyte = min(colSums(Timepoints_Matrix))
+minNumAnalytesAtStation = min(rowSums(Timepoints_Matrix)) 
+
+while(minNumStationsWithAnalyte > 0 & 
+  minNumAnalytesAtStation > 0) {
+
+  
+ if ( minNumStationsWithAnalyte > 0 & 
+  minNumAnalytesAtStation > 0 & minNumStationsWithAnalyte <= minNumAnalytesAtStation) {
+  colsToKeep = colSums(Timepoints_Matrix) != minNumStationsWithAnalyte
+  
+  print(paste('Dropping', length(colsToKeep[!colsToKeep]), 'of', length(colsToKeep), 'analytes:')) 
+  print(names(colsToKeep)[!colsToKeep])
+
+  Timepoints_Matrix = Timepoints_Matrix[,colsToKeep] 
+} else {
+  rowsToKeep = rowSums(Timepoints_Matrix) != minNumAnalytesAtStation
+  
+  print(paste('Dropping', length(rowsToKeep[!rowsToKeep]), 'of', length(rowsToKeep), 'stations:')) 
+  print(names(rowsToKeep)[!rowsToKeep])
+
+  Timepoints_Matrix = Timepoints_Matrix[rowsToKeep,]
+}
+
+    
+  minNumStationsWithAnalyte = min(colSums(Timepoints_Matrix))
+minNumAnalytesAtStation = min(rowSums(Timepoints_Matrix)) 
+  }
+
+```
+
+### Water Stations in Control
+
+```{r}
+# TBD
+```
+
+## wefwefw
+
+1.  Paring down Sites and Analytes such that all Sites have all Analytes
+    1.  Ideally analytes on the same day
+2.  Fire history
+    1.  time since last fire (categorical)
+    2.  Where are the thresholds?

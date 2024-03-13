@@ -1,0 +1,93 @@
+---
+title: "Util Tests"
+author: "Sully Riley"
+format: html
+editor: visual
+---
+
+```{r}
+source("utils.R")
+```
+
+create_analyte_matrix_with_results
+
+```{r}
+assert(
+  identical(
+    create_analyte_matrix_with_results(
+      water_quality_for_replicates = data.frame(
+        station_code = c("A", "A", "A", "A", "A", "A"),
+        replicate_code = c("1", "1", "2", "2", "3", "3"),
+        analyte = c("oxygen", "phosphorus", "oxygen", "phosphorus", "oxygen", "phosphorus"),
+        result = c(2, 3, 3.1, 1, 3.3, 1.3)
+        ),
+      id_cols = c("station_code", "replicate_code")
+      ),
+    as.matrix(data.frame(
+      oxygen = c(2.0, 3.1, 3.3),
+      phosphorus = c(3.0, 1.0, 1.3),
+      row.names = c("A-1", "A-2", "A-3")
+      ))
+    ),
+  msg = "Fail"
+)
+```
+
+filter_water_quality_by_analyte_and_replicate
+
+```{r}
+
+assert(
+  identical(
+    filter_water_quality_by_analyte_and_replicate(
+      analytes = c("oxygen", "phosphorus"),
+      id_cols = c("station_code", "replicate_code"),
+      replicates = data.frame(
+        station_code = c("A", "A", "B", "B", "C", "C", "E", "E"),
+        replicate_code = c("1", "2", "1", "2", "1", "3", "1", "2")
+        #fire_name = c("Name1", "Name2", "Name3", "Name4", "Name5", "Name6", "", "sdf")
+      ),
+      water_quality = data.frame(
+        analyte = c(
+          "oxygen", "phosphorus", "ph", "salinity",
+          "oxygen", "phosphorus", "ph", "salinity",
+          "oxygen", "ph", "phosphorus", "salinity",
+          "oxygen", "phosphorus", "ph", "turbidity"),
+        result = c(1,2,3,4,
+                   5,6,7,8,
+                   9, 10, 11, 12,
+                   13, 14, 15, 16),
+        station_code = c(
+          "A", "A", "A", "A",
+          "B", "B", "B", "B", 
+          "C", "C", "C", "C",
+          "D", "D", "D", "D"),
+        replicate_code = c(
+          "1", "2", "3", "4",
+          "1", "2", "3", "4",
+          "1", "2", "3", "4",
+          "1", "2", "3", "4")
+      )
+    ),
+    data.frame(
+        station_code = c(
+          "A", "A", 
+          "B", "B", 
+          "C", "C"),
+        replicate_code = c(
+          "1", "2",
+          "1", "2",
+          "1", "3"),
+        analyte = c(
+          "oxygen", "phosphorus",
+          "oxygen", "phosphorus",
+          "oxygen", "phosphorus"),
+        result = c(1,2,
+                   5,6,
+                   9, 11)
+      )
+    
+  ), 
+  msg = 't'
+)
+```
