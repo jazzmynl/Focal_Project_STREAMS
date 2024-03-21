@@ -4,7 +4,7 @@ format: html
 editor: visual
 ---
 
-# Fire Visualization
+# CRAM Visualization
 
 ## Load packages and files
 
@@ -15,102 +15,79 @@ library(readr)
 library(ggplot2)
 library(dplyr)
 library(viridis)    
-#install.packages("bestNormalize")
 library(bestNormalize)
-#install.packages("ggcorrplot")
 library(ggcorrplot)
-library(FactoMineR)
-install.packages("vqv/ggbiplot")
-library(ggbiplot)
-library(ggthemes)
-library(vegan)
+library(factoextra)
+library(ggfortify)
+#library(FactoMineR)
+#library(ggbiplot)
+#library(ggthemes)
+#library(vegan)
 ```
 
 ```{r}
 #load files
-ConfirmedSite <- read_csv("~/Desktop/GitHub/Focal_Project_STREAMS/ConfirmedSite.csv")
+ConfirmedSite <- read_csv("~/Desktop/GitHub/Focal_Project_STREAMS/Fire/ConfirmedSite.csv")
 ```
 
 ## Prelim visualization
 
 ```{r}
-##Boxplots of all cram scores
-#plot all index to identify patterns
+##Boxplots of all cram scores to identify any patterns
 ConfirmedSite %>%
-  ggplot(aes(x=`Pre/Post_Fire`, y=indexscore)) +
+  ggplot(aes(x=fct_rev(`Pre/Post_Fire`), y=indexscore)) +
   geom_boxplot()+
-  geom_point(aes(color=`Fire/Control`))
+  geom_point(aes(color=fct_rev(`Fire/Control`)))
 
-#plot all buffer to identify patterns
 ConfirmedSite %>%
-  ggplot(aes(x=`Pre/Post_Fire`, y=bufferlan)) +
+  ggplot(aes(x=fct_rev(`Pre/Post_Fire`), y=bufferlan)) +
   geom_boxplot()+
-  geom_point(aes(color=`Fire/Control`))
+  geom_point(aes(color=fct_rev(`Fire/Control`)))
 
-#plot all hydrology to identify patterns
 ConfirmedSite %>%
-  ggplot(aes(x=`Pre/Post_Fire`, y=hydrology)) +
+  ggplot(aes(x=fct_rev(`Pre/Post_Fire`), y=hydrology)) +
   geom_boxplot()+
-  geom_point(aes(color=`Fire/Control`))
+  geom_point(aes(color=fct_rev(`Fire/Control`)))
 
-#plot all physical to identify patterns
 ConfirmedSite %>%
-  ggplot(aes(x=`Pre/Post_Fire`, y=physical)) +
+  ggplot(aes(x=fct_rev(`Pre/Post_Fire`), y=physical)) +
   geom_boxplot()+
-  geom_point(aes(color=`Fire/Control`))
+  geom_point(aes(color=fct_rev(`Fire/Control`)))
 
-#plot all biotic to identify patterns
 ConfirmedSite %>%
-  ggplot(aes(x=`Pre/Post_Fire`, y=biotic_str)) +
+  ggplot(aes(x=fct_rev(`Pre/Post_Fire`), y=biotic_str)) +
   geom_boxplot()+
-  geom_point(aes(color=`Fire/Control`))
+  geom_point(aes(color=fct_rev(`Fire/Control`)))
 
 
 ```
 
 ```{r}
-#Index grid
-ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=indexscore, color=`Fire/Control`)) +
+#Paired visual to identify any patterns
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=indexscore, color=fct_rev(`Fire/Control`))) +
   geom_point() + 
   geom_line(aes(group=Pair_ID)) +
   facet_wrap(~ Group_ID) 
 
-```
-
-```{r}
-#buffer grid
-ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=bufferlan, color=`Fire/Control`)) +
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=bufferlan, color=fct_rev(`Fire/Control`))) +
   geom_point() + 
   geom_line(aes(group=Pair_ID)) +
   facet_wrap(~ Group_ID) 
 
-```
-
-```{r}
-#hydrology grid
-ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=hydrology, color=`Fire/Control`)) +
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=hydrology, color=fct_rev(`Fire/Control`))) +
   geom_point() + 
   geom_line(aes(group=Pair_ID)) +
   facet_wrap(~ Group_ID) 
 
-```
-
-```{r}
-#physical grid
-ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=physical, color=`Fire/Control`)) +
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=physical, color=fct_rev(`Fire/Control`))) +
   geom_point() + 
   geom_line(aes(group=Pair_ID)) +
   facet_wrap(~ Group_ID) 
 
-```
-
-```{r}
-#biotic grid
-ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=biotic_str, color=`Fire/Control`)) +
+ggplot(data = ConfirmedSite, aes(x=fct_rev(`Pre/Post_Fire`), y=biotic_str, color=fct_rev(`Fire/Control`))) +
   geom_point() + 
   geom_line(aes(group=Pair_ID)) +
   facet_wrap(~ Group_ID) 
-
 ```
 
 ```{r}
@@ -137,7 +114,9 @@ ConfirmedSite %>%
   geom_boxplot()
 ```
 
-## Rate of Change
+# Calculations and Analysis
+
+## Score change
 
 ```{r}
 #isolating variables of focus ##not really necessary
@@ -203,36 +182,41 @@ Change <- ChangeDetails %>% select(Pair_ID,
                                      Hydro_Change,
                                      Physical_Change,
                                      Biotic_Change) %>% unique()
+colnames(Change)[2] ="Condition"
 
-means <- aggregate(Index_Change ~  `Fire/Control`, Change, mean)
+```
+
+## Mean Change Visuals
+
+```{r}
 #Index
 Change %>% 
-  ggplot(aes(y=Index_Change, x=fct_rev(`Fire/Control`))) +
+  ggplot(aes(y=Index_Change, x=fct_rev(Condition))) +
   geom_boxplot() +
-  stat_summary(fun.y = "mean", shape=3, color="blue") + 
-  geom_text(data = means, aes(label= Index_Change))
+  stat_summary(fun.y = "mean", shape=3, color="blue") 
+  #geom_text(data = means, aes(label= Index_Change))
 
 #buffer
 Change %>% 
-  ggplot(aes(y=Buff_Change, x=fct_rev(`Fire/Control`))) +
+  ggplot(aes(y=Buff_Change, x=fct_rev(Condition))) +
   geom_boxplot()+
   stat_summary(fun.y = "mean", shape=3, color="blue")
 
 #Hydro
 Change %>% 
-  ggplot(aes(y=Hydro_Change, x=fct_rev(`Fire/Control`))) +
+  ggplot(aes(y=Hydro_Change, x=fct_rev(Condition))) +
   geom_boxplot()+
   stat_summary(fun.y = "mean", shape=3, color="blue")
 
 #physical
 Change %>% 
-  ggplot(aes(y=Physical_Change, x=fct_rev(`Fire/Control`))) +
+  ggplot(aes(y=Physical_Change, x=fct_rev(Condition))) +
   geom_boxplot()+
   stat_summary(fun.y = "mean", shape=3, color="blue")
 
 #biotic
 Change %>% 
-  ggplot(aes(y=Biotic_Change, x=fct_rev(`Fire/Control`))) +
+  ggplot(aes(y=Biotic_Change, x=fct_rev(Condition))) +
   geom_boxplot()+
   stat_summary(fun.y = "mean", shape=3, color="blue")
 ```
@@ -246,64 +230,63 @@ shapiro.test(Change$Buff_Change)
 shapiro.test(Change$Hydro_Change)
 shapiro.test(Change$Physical_Change)
 shapiro.test(Change$Biotic_Change)
+
+#p value > 0.05 for all; all are normal
 ```
 
 ```{r}
-t.test(Change$Index_Change~`Fire/Control`, data= Change)
-t.test(Change$Buff_Change~`Fire/Control`, data= Change)
-t.test(Change$Hydro_Change~`Fire/Control`, data= Change)
-t.test(Change$Physical_Change~`Fire/Control`, data= Change)
-t.test(Change$Biotic_Change~`Fire/Control`, data= Change)
+t.test(Change$Index_Change~Condition, data= Change)
+t.test(Change$Buff_Change~Condition, data= Change)
+t.test(Change$Hydro_Change~Condition, data= Change)
+t.test(Change$Physical_Change~Condition, data= Change)
+t.test(Change$Biotic_Change~Condition, data= Change)
+
+#p > 0.05 for all, none are significant
 ```
 
 ## Regression
 
 ```{r}
-Regression <- lm(Index_Change ~ Buff_Change + Hydro_Change + Physical_Change + Biotic_Change + `Fire/Control`, data = Change)
+Regression <- lm(Index_Change ~ Buff_Change + Hydro_Change + Physical_Change + Biotic_Change + Condition , data = Change)
 summary(Regression)
 
+#significant interaction across all scores
 ```
 
 ## PCA
 
 ```{r}
+#creating a matrix
+Change$Fire <- as.numeric(c('1', '0', '1', '0', '1', '0', '1', '0', '1', '0', '1', '0', '1', '0'))
 
-ChangeMatrix <- Change  %>% select(Index_Change,
-                                     Buff_Change,
-                                     Hydro_Change,
-                                     Physical_Change,
-                                     Biotic_Change)
+#1=fire, 0=control
+#pair_id: a = fire, b = contril
 
-corr_matrix <- cor(ChangeMatrix)
-ggcorrplot(corr_matrix)
+ChangeMatrix <- Change[,3:7]
+rownames(ChangeMatrix)= Change[,1]
 
-Change_pca <- princomp(corr_matrix)
-summary(Change_pca)
+##
 
-fviz_eig(Change_pca, addlabels = TRUE)
-fviz_pca_var(Change_pca, col.var = "black")
+pca <- prcomp(ChangeMatrix,
+                   center = TRUE, 
+                   scale. = TRUE)
+summary(pca)
+
+str(pca) 
+
+pca.plot <- autoplot(pca, data = ChangeMatrix) 
+  
+pca.plot
+
+biplot <- biplot(pca)
+
 
 ```
 
 ```{r}
-fviz_cos2(Change_pca, choice = "var", axes = 1:2)
-```
 
-```{r}
-fviz_pca_var(Change_pca, col.var = "cos2",
-            gradient.cols = c("black", "orange", "green"),
-            repel = TRUE)
-```
+fviz_pca_biplot(pca, habillage=Change$Fire, addEllipses = TRUE) +  scale_colour_manual(values=c("blue", "red"))
 
-## PCoA
-
-```{r}
-matrix.log <- log1p(ChangeMatrix)
-
-dist <- vegdist(matrix.log, "bray")
-res <- pcoa(mite.D)
-res$values
-biplot(res)
-
-Change_pcoa <- pcoa(dist(ChangeMatrix))
+#0=Control
+#1=fire
 ```
