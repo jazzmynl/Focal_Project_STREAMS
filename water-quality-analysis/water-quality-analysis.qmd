@@ -20,6 +20,11 @@ library(gridExtra)
 ```{r}
 SHOULD_RUN_ASSERTIONS = T
 
+SHOULD_WRITE_FILES = F
+
+FIGURE_WIDTH = 6
+FIGURE_HEIGHT = 4
+
 assert = function(assertion, msg = msg) {
   if(SHOULD_RUN_ASSERTIONS) {
     assert_that(
@@ -34,6 +39,8 @@ assert = function(assertion, msg = msg) {
 
 ```{r}
 RAW_DATA_FILE_PATH = "water-quality-raw/"
+
+OUTPUT_FILE_PATH = "water-quality-output/"
 
 ```
 
@@ -489,34 +496,63 @@ do_the_thing = function(
 ## PCA function
 
 ```{r}
-run_PCA = function(results) {
+
+output_plot = function(output, plot_name, analysis_name) {
+  if(SHOULD_WRITE_FILES) {
+    ggsave(plot = output, width = FIGURE_WIDTH, height = FIGURE_HEIGHT,filename=paste(OUTPUT_FILE_PATH, analysis_name,"-",plot_name, ".jpg", sep = ""))
+  }
+ print(output)
+}
+
+run_PCA = function(result, analysis_name, analysis_title) { 
+  multivariate_matrix = result$multivariate_matrix
+  stations_with_analytes = result$stations_with_analytes
+  
   results_pca = prcomp(multivariate_matrix, scale = TRUE)
 
-  print(fviz_eig(results_pca))
+  eig = fviz_eig(results_pca) + 
+    labs(title = paste("Scree plot", analysis_title, sep = " - "))
+
+  output_plot(eig, "eig-chart", analysis_name)
+
   
-  print(fviz_pca_biplot(results_pca,
+  
+  biplot_time = fviz_pca_biplot(results_pca,
                   label="var",
                   col.ind = (stations_with_analytes$days_since_last_fire)) +
       scale_color_continuous(name = "Days since last fire", type = "viridis") +
-      coord_cartesian(clip = "off"))
+      coord_cartesian(clip = "off") +
+      labs(title = paste("PCA Biplot", analysis_title, sep = " - "))
+
+  output_plot(biplot_time, "days-since-last-fire", analysis_name)
   
-  print(fviz_pca_biplot(results_pca,
+  biplot_distance = fviz_pca_biplot(results_pca,
                   label="var",
                   col.ind = stations_with_analytes$last_fire_distance) +
     scale_color_continuous(name = "Last Fire Distance", type = "viridis") +
-    coord_cartesian(clip = "off"))
+    coord_cartesian(clip = "off") +
+    labs(title = paste("PCA Biplot", analysis_title, sep = " - "))
+
+  output_plot(biplot_distance, "last-fire-distance", analysis_name)
   
-  print(fviz_pca_biplot(results_pca,
+  biplot_elevation = fviz_pca_biplot(results_pca,
                   label="var",
                   col.ind = stations_with_analytes$elevation) +
     scale_color_continuous(name = "Elevation", type = "viridis") +
-    coord_cartesian(clip = "off"))
+    coord_cartesian(clip = "off") + 
+    labs(title = paste("PCA Biplot", analysis_title, sep = " - "))
+
+  output_plot(biplot_elevation, "elevation", analysis_name)
+
   
-  print(fviz_pca_var(results_pca,
+  variables = fviz_pca_var(results_pca,
                col.var = "contrib", # Color by contributions to the PC
                gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
                repel = TRUE     # Avoid text overlapping
-               ))
+               ) + 
+          labs(title = paste("Variables - PCA", analysis_title, sep = " - "))
+
+  output_plot(variables, "variable-contribution", analysis_name)
 }
 ```
 
@@ -534,7 +570,6 @@ result = do_the_thing(
   date_interval_for_observations = dmonths(1)
 )
 
-
 stations_with_analytes = result$stations_with_analytes
 multivariate_matrix = result$multivariate_matrix
 ```
@@ -542,27 +577,48 @@ multivariate_matrix = result$multivariate_matrix
 #### PERMANOVA
 
 ```{r}
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire * elevation, data = stations_with_analytes
-  )
+output_adonis = function(model, model_name, analysis_name) {
+  if(SHOULD_WRITE_FILES) {
+    write.csv(model, paste(OUTPUT_FILE_PATH, analysis_name,"-",model_name, ".csv", sep = ""))
+  }
+  model
+}
+```
 
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire + elevation, data = stations_with_analytes
+```{r}
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire * elevation, 
+    data = stations_with_analytes
+  ), 
+  "distance-time-elevation-interactions", "no-limit"
 )
 
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire, data = stations_with_analytes
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire + elevation, data = stations_with_analytes
+  ),
+  "distance-time-elevation-no-interactions", "no-limit"
 )
 
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ time_since_last_fire, data = stations_with_analytes
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire, data = stations_with_analytes
+  ),
+  "distance-time-interactions", "no-limit"
 )
+
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ time_since_last_fire, data = stations_with_analytes
+  ),
+  "time", "no-limit")
 ```
 
 #### PCA
 
 ```{r}
-run_PCA(results)
+run_PCA(result, analysis_name = "no-limit", analysis_title = "All Groups")
 
 ```
 
@@ -603,23 +659,35 @@ result = do_the_thing(
 Can remove elevation, since they are all in roughly the same location.
 
 ```{r}
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire , data = stations_with_analytes
-  )
-
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire, data = stations_with_analytes
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire , data = stations_with_analytes
+    ),
+  "distance-time-interactions",
+  "1km-group"
+)
+  
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire, data = stations_with_analytes
+  ),
+  "distance-time-no-interactions",
+  "1km-group"
 )
 
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ time_since_last_fire, data = stations_with_analytes
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ time_since_last_fire, data = stations_with_analytes
+  ),
+  "time",
+  "1km-group"
 )
 ```
 
 #### PCA
 
 ```{r}
-run_PCA(results)
+run_PCA(result, "1km-group", "Stations within 1km")
 ```
 
 Seem to have some outliers in Days since last fire, so we'll remove them by setting a max time since last fire.
@@ -651,21 +719,33 @@ result = do_the_thing(
 Can remove elevation, since they are all in roughly the same location.
 
 ```{r}
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire , data = stations_with_analytes
-  )
-
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire, data = stations_with_analytes
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire , data = stations_with_analytes
+    ),
+  "distance-time-interactions",
+  "max-1000-days-since-last-fire"
 )
 
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ time_since_last_fire, data = stations_with_analytes
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire, data = stations_with_analytes
+  ),
+  "distance-time-no-interactions",
+  "max-1000-days-since-last-fire"
+)
+
+output_adonis(
+  adonis2(
+    vegdist(multivariate_matrix, method = "bray") ~ time_since_last_fire, data = stations_with_analytes
+  ),
+  "distance-time-no-interactions",
+  "max-1000-days-since-last-fire"
 )
 ```
 
 #### PCA
 
 ```{r}
-run_PCA(results)
+run_PCA(result, "max-1000-days-since-last-fire", "Stations within 1km with measurements\nwithin 1000 days of last fire")
 ```
