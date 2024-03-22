@@ -12,7 +12,6 @@ library(tidyverse)
 library(assertthat)
 library(vegan)
 library(factoextra)
-library(gridExtra)
 ```
 
 ## Setup Helpers
@@ -69,7 +68,7 @@ water_station_fires = water_station_fires_raw |>
 ### Water Stations
 
 ```{r}
-water_stations_grouped_raw = read_csv(paste(RAW_DATA_FILE_PATH, '1kmWaterStationsGroup.csv', sep = ''))
+water_stations_grouped_raw = read_csv(paste(RAW_DATA_FILE_PATH, '1kmWaterStationsGroup-3-13-24.csv', sep = ''))
 
 water_stations_grouped = water_stations_grouped_raw |> 
   rename(
@@ -116,7 +115,7 @@ water_station_fires = inner_join(
 ### Water Quality
 
 ```{r}
-water_quality_raw = read_tsv(paste(RAW_DATA_FILE_PATH, "analytes.tsv", sep = ''))
+water_quality_raw = read_tsv(paste(RAW_DATA_FILE_PATH, "analytes-3-5-24.tsv", sep = ''))
 
 water_quality = water_quality_raw |> rename(
   # rename all the columns used for analysis
