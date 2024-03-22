@@ -11,8 +11,8 @@ editor: visual
 library(tidyverse)
 library(assertthat)
 library(vegan)
-
-source("utils.R")
+library(factoextra)
+library(gridExtra)
 ```
 
 ## Setup Helpers
@@ -62,6 +62,17 @@ water_station_fires = water_station_fires_raw |>
 ### Water Stations
 
 ```{r}
+water_stations_grouped_raw = read_csv(paste(RAW_DATA_FILE_PATH, '1kmWaterStationsGroup.csv', sep = ''))
+
+water_stations_grouped = water_stations_grouped_raw |> 
+  rename(
+    station_code = `StationCode`,
+    group_id = `GROUP_ID`
+  ) |> 
+  select(
+    c(station_code, group_id)
+  )
+
 water_stations = water_station_fires |> 
   select(-c(
     fire_name,
@@ -74,8 +85,24 @@ water_stations = water_station_fires |>
   )) |> unique()
 
 assert(
+  identical(water_stations_grouped |> arrange(station_code) |> (`[[`)("station_code"), water_stations |> arrange(station_code) |> (`[[`)("station_code")),
+  msg = "Should have matching stations"
+)
+
+assert(
   water_station_fires_raw$StationCode |> unique() |> length() == water_stations |> nrow(),
   msg = "Columns selected for water station dataframe should uniquely identify water stations"
+)
+
+water_stations = inner_join(
+  water_stations,
+  water_stations_grouped
+)
+
+# think more about how we're doing this but this is fine for now
+water_station_fires = inner_join(
+  water_station_fires,
+  water_stations
 )
 ```
 
@@ -148,14 +175,6 @@ analytes_of_interest = water_quality$analyte |> unique()
 
 ## Create sets of analytes
 
-Variables:
-
-```{r}
-MAX_FIRE_DISTANCE = Inf
-MAX_FIRE_TIME = 0
-DATE_INTERVAL = dmonths(1)
-```
-
 1.  Fire cutoff
 
     ```{r}
@@ -220,7 +239,7 @@ DATE_INTERVAL = dmonths(1)
     }
     ```
 
-4.  rolling join to match water_station interval with most recent fire
+4.  Perform a rolling join to match water_station interval with most recent fire
 
     ```{r}
     match_water_station_interval_to_most_recent_fire = function(
@@ -244,103 +263,40 @@ DATE_INTERVAL = dmonths(1)
     }
     ```
 
-5.  ksdf
-
-6.  
-
-```{r}
-do_the_thing = function(
-    water_stations,
-    water_station_fires,
-    water_quality,
-    max_fire_distance = Inf,
-    max_time_since_last_fire = Inf,
-    date_interval_for_observations
-) {
-  # 1. Filter out fires outside of fire cutoff, if applicable
-  water_station_fires = fire_cutoff(water_station_fires, max_fire_distance)
-  
-  # 2. Create a site-interval with desired time interval
-  water_station_intervals = get_water_station_intervals(water_station_fires, date_interval_for_observations, water_quality)
-  
-  # 3. 
-  water_quality_with_most_recent_fire = map_analyte_to_most_recent_fire(water_quality, water_station_fires)
-  
-  # 4. 
-  water_stations_with_recent_fire = match_water_station_interval_to_most_recent_fire(
-    water_station_intervals,
-    water_station_fires
-  )
-
-  
-  list(
-    "water_station_fires" = water_station_fires, 
-    "water_station_intervals"= water_station_intervals,
-    "water_quality_with_most_recent_fire" = water_quality_with_most_recent_fire,
-    "water_stations_with_recent_fire" = water_stations_with_recent_fire
-       )
-}
-```
-
-1.  Fire cutoff
+5.  match water quality measurement with water station / interval. If the water quality measurement has a most recent fire that is more recent than the interval start, set the interval start for that row to the most recent fire, and treat it as a different interval\
 
     ```{r}
-
-    result = do_the_thing(
-      water_stations, 
-      water_station_fires, 
-      water_quality,
-      max_fire_distance = 1000, 
-      max_time_since_last_fire = Inf,
-      date_interval_for_observations = DATE_INTERVAL
+    match_water_quality_to_water_station_interval = function(water_quality_with_most_recent_fire, water_stations_with_recent_fire) {
+      water_quality_for_observation = inner_join(
+        water_quality_with_most_recent_fire,
+        water_stations_with_recent_fire,
+        by = join_by(
+          station_code,
+          closest(sample_date_time >= interval_start)
+        )
+      ) |> 
+        # Create a new interval when the sample previous fire date is different from the site previous fire date - this happens if there was a fire since the interval started
+        mutate(
+        interval_start = case_when(
+          site_interval.previous_fire_start != sample.previous_fire_start ~ sample.previous_fire_start,
+          .default = interval_start
+        ),
+        site_interval.previous_fire_start = case_when(
+          site_interval.previous_fire_start != sample.previous_fire_start ~ sample.previous_fire_start,
+          .default = site_interval.previous_fire_start
+        )
       )
-
-    water_station_fires = result$water_station_fires
-    water_station_intervals = result$water_station_intervals
-    water_quality_with_most_recent_fire = result$water_quality_with_most_recent_fire
-    water_stations_with_recent_fire = result$water_stations_with_recent_fire
+    }
     ```
 
-2.  Create a site-interval with the desired time interval
-
-3.  Use a rolling join to join water quality with most recent fire
-
-4.  rolling join to match water_station interval with most recent fire
-
-5.  match water quality measurement with water station / interval. If the water quality measurement has a most recent fire that is more recent than the interval start, set the interval start for that row to the most recent fire, and treat it as a different interval
+6.  Get average analyte value per water station interval
 
     ```{r}
-    water_quality_for_observation = inner_join(
-      water_quality_with_most_recent_fire,
-      water_stations_with_recent_fire,
-      by = join_by(
-        station_code,
-        closest(sample_date_time >= interval_start)
-      )
-    ) |> 
-      # Create a new interval when the sample previous fire date is different from the site previous fire date - this happens if there was a fire since the interval started
-      mutate(
-      interval_start = case_when(
-        site_interval.previous_fire_start != sample.previous_fire_start ~ sample.previous_fire_start,
-        .default = interval_start
-      ),
-      site_interval.previous_fire_start = case_when(
-        site_interval.previous_fire_start != sample.previous_fire_start ~ sample.previous_fire_start,
-        .default = site_interval.previous_fire_start
-      )
-    )
-    ```
-
-6.  Get average analyte per interval
-
-    -   Station code
-
-    -   interval_start
-
-    -   analyte
-
-    ```{r}
-    group_water_quality_by = function(water_quality_for_observation) {
+    get_mean_water_quality_per_analyte = function(
+        water_quality_by_water_station_interval
+      ) {
+      # group by station, analyte, and interval_start, plus any other values that are unique per group to retain its value 
+      group_water_quality = function(water_quality_for_observation) {
       water_quality_for_observation |> 
         group_by(
           station_code,
@@ -348,31 +304,32 @@ do_the_thing = function(
           interval_start,
           analyte,
           unit,
+          elevation,
+          group_id
         )
-    }
-
-    assert(water_quality_for_observation |> 
-      group_by(
-        station_code, 
-        date_interval, 
-        interval_start,
-        analyte,
-      ) |> n_groups() == water_quality_for_observation |> 
-      group_water_quality_by() |> n_groups())
-
-
-
-    mean_water_quality_for_observation = water_quality_for_observation |> 
+      }
+      
+      assert(water_quality_by_water_station_interval |> 
+               group_by(
+                 station_code, 
+                 interval_start,
+                 analyte,
+               ) |>
+               n_groups() == 
+             water_quality_by_water_station_interval |>
+               group_water_quality() |> 
+               n_groups(),
+             msg = "Grouping by additional values should not increase the number of groups, since they should be unique")
+      
+      water_quality_by_water_station_interval |> 
       # dropped the ones that are after the interval start for now
       filter(interval_start == int_start(date_interval)) |> 
-      group_water_quality_by() |> 
+      group_water_quality() |> 
       summarise(
         result = mean(result),
         last_fire_start = unique(site_interval.previous_fire_start),
         last_fire_contained = max(site_interval.previous_fire_contained),
-        last_fire_distance = min(fire_distance),
-        elevation = unique(elevation),
-        near_rank = unique(near_rank)
+        last_fire_distance = min(fire_distance)
       ) |> ungroup() |> 
       mutate(
         time_since_last_fire = case_when(
@@ -380,10 +337,14 @@ do_the_thing = function(
           .default = ddays(0)
         )
       )
+    }
+    ```
 
-    colnames(mean_water_quality_for_observation)
+7.  Pivot wider
 
-    stations_with_analytes = mean_water_quality_for_observation |> 
+    ```{r}
+    get_stations_with_analytes = function(mean_water_quality_for_observation) {
+      stations_with_analytes = mean_water_quality_for_observation |> 
       pivot_wider(
         id_cols = c(
           station_code, 
@@ -393,7 +354,7 @@ do_the_thing = function(
           last_fire_contained, 
           time_since_last_fire,
           elevation,
-          near_rank,
+          group_id,
           last_fire_distance),
         names_from = analyte,
         values_from = result) |> 
@@ -413,164 +374,298 @@ do_the_thing = function(
       mutate(
         site_id = paste(station_code, date_interval, sep=":")
       ) 
+    }
     ```
 
-7.  Prepare Water Quality matrix
+8.  Prepare Water Quality Multivariate Objects
 
     ```{r}
-    stations_with_analytes |> group_by(station_code) |> 
-      summarise(
-        count = n()
+    prepare_water_quality_matrix = function(stations_with_analytes) {
+      colnames(stations_with_analytes)
+      multivariate_df = stations_with_analytes |> 
+        #filter(group_id == 162) |>
+        select(
+          site_id, 
+          dissolved_organic_carbon_mg_l, 
+          pH, 
+          total_suspended_solids_mg_l 
         )
-    multivariate_df = stations_with_analytes |>
-      select(
-        site_id, last_fire_distance, time_since_last_fire, elevation, dissolved_organic_carbon_mg_l, pH, total_suspended_solids_mg_l 
-      )
-
-    multivariate_matrix = as.matrix(multivariate_df[5:ncol(multivariate_df)])
-
-    rownames(multivariate_matrix) = multivariate_df$site_id
+      
+      multivariate_matrix = as.matrix(multivariate_df[2:ncol(multivariate_df)])
+      
+      rownames(multivariate_matrix) = multivariate_df$site_id
+      
+      list(
+        "multivariate_matrix" = multivariate_matrix,
+        "stations_with_analytes" = stations_with_analytes)
+    }
     ```
 
-## PCO
+Define function to get analytes
 
 ```{r}
-library(vegan)
-library(factoextra)
-
-
-# Way to do it so you can get eigenvalues/goodness of fit
-wq_distance <- vegdist(multivariate_matrix, method = "bray")
-
-wq_pco = cmdscale(wq_distance, k = 3, eig = TRUE)
-
-stations_with_pco = data.frame(scores(wq_pco)) |> 
-  mutate(site_id = rownames(scores(wq_pco))) |>
-  inner_join(stations_with_analytes, by = join_by(site_id))
-
-ggplot(stations_with_pco) + 
-  aes(x = Dim1, y = Dim2, color = time_since_last_fire) + 
-  geom_point()
-
-ggplot(stations_with_pco) + 
-  aes(x = Dim1, y = Dim2, color = last_fire_distance) + 
-  geom_point()
-
-```
-
-## PCA
-
-```{r}
-results_pca = prcomp(multivariate_matrix, scale = TRUE)
-
-fviz_eig(results_pca)
-
-fviz_pca_biplot(results_pca,
-                label="var",
-                col.ind = as.numeric(multivariate_df$time_since_last_fire, "days"))
-
-fviz_pca_biplot(results_pca,
-                label="var",
-                col.ind = multivariate_df$last_fire_distance)
-
-fviz_pca_var(results_pca,
-             col.var = "contrib", # Color by contributions to the PC
-             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-             repel = TRUE     # Avoid text overlapping
-             )
-```
-
-```{r}
-library(ggfortify)
-
-pca_plot_data = multivariate_df |> mutate(
-  fire_distance_category = case_when(
-    last_fire_distance < 500 ~ 'near',
-    last_fire_distance > 500 & last_fire_distance < 1000 ~ 'mid',
-    .default = 'far'
+do_the_thing = function(
+    water_stations,
+    water_station_fires,
+    water_quality,
+    max_fire_distance = Inf,
+    max_time_since_last_fire = Inf,
+    date_interval_for_observations,
+    station_groups = NULL
+) {
+  
+  # 1. Filter out fires outside of fire cutoff, if applicable
+  water_station_fires = fire_cutoff(
+    water_station_fires, 
+    max_fire_distance
   )
-)
-
-autoplot(results_pca, data = pca_plot_data, color = 'fire_distance_category', loadings = TRUE)
-
-autoplot(results_pca, data = pca_plot_data, color = 'time_since_last_fire', loadings = TRUE, loadings.label = TRUE)
-
-autoplot(results_pca, data = pca_plot_data, color = 'elevation', loadings = TRUE, loadings.label = TRUE)
-```
-
-```{r}
-adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire * elevation, data = multivariate_df
+  
+  # 2. Create a site-interval with desired time interval
+  water_station_intervals = get_water_station_intervals(
+    water_station_fires, 
+    date_interval_for_observations, 
+    water_quality
+  )
+  
+  # 3. 
+  water_quality_with_most_recent_fire = 
+    map_analyte_to_most_recent_fire(
+      water_quality, 
+      water_station_fires
+    )
+  
+  # 4. 
+  water_stations_with_recent_fire = 
+    match_water_station_interval_to_most_recent_fire(
+      water_station_intervals,
+      water_station_fires
+    )
+  
+  # 5.
+  water_quality_by_water_station_interval = 
+    match_water_quality_to_water_station_interval(
+      water_quality_with_most_recent_fire,
+      water_stations_with_recent_fire
+    )
+  
+  # 6. 
+  mean_water_quality_for_observation = get_mean_water_quality_per_analyte(
+    water_quality_by_water_station_interval
   )
 
+  # 7. 
+  stations_with_analytes = get_stations_with_analytes(mean_water_quality_for_observation)
+  
+  if(!is.null(station_groups)) {
+    stations_with_analytes = stations_with_analytes |> 
+             filter(group_id %in% station_groups)
+  }
+  
+  if(!is.null(date_interval_for_observations)) {
+    stations_with_analytes = stations_with_analytes |> 
+      filter(time_since_last_fire < max_time_since_last_fire)
+  }
+  
+  # 8. 
+  multivariate_objects = prepare_water_quality_matrix(stations_with_analytes)
+  
+  multivariate_matrix = multivariate_objects$multivariate_matrix
+  stations_with_analytes = multivariate_objects$stations_with_analytes
+  
+  # reformat columns for figures
+  colnames(multivariate_matrix) = c("DOC", "pH", "TSS")
+  stations_with_analytes = stations_with_analytes |> 
+    mutate(
+      days_since_last_fire = as.numeric(time_since_last_fire, "days")
+    )
+  
+  list(
+    "stations_with_analytes" = stations_with_analytes,
+    "multivariate_matrix" = multivariate_matrix
+   )
+}
+```
+
+## PCA function
+
+```{r}
+run_PCA = function(results) {
+  results_pca = prcomp(multivariate_matrix, scale = TRUE)
+
+  print(fviz_eig(results_pca))
+  
+  print(fviz_pca_biplot(results_pca,
+                  label="var",
+                  col.ind = (stations_with_analytes$days_since_last_fire)) +
+      scale_color_continuous(name = "Days since last fire", type = "viridis") +
+      coord_cartesian(clip = "off"))
+  
+  print(fviz_pca_biplot(results_pca,
+                  label="var",
+                  col.ind = stations_with_analytes$last_fire_distance) +
+    scale_color_continuous(name = "Last Fire Distance", type = "viridis") +
+    coord_cartesian(clip = "off"))
+  
+  print(fviz_pca_biplot(results_pca,
+                  label="var",
+                  col.ind = stations_with_analytes$elevation) +
+    scale_color_continuous(name = "Elevation", type = "viridis") +
+    coord_cartesian(clip = "off"))
+  
+  print(fviz_pca_var(results_pca,
+               col.var = "contrib", # Color by contributions to the PC
+               gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+               repel = TRUE     # Avoid text overlapping
+               ))
+}
+```
+
+## Results
+
+### No limit to time since last fire
+
+```{r}
+result = do_the_thing(
+  water_stations, 
+  water_station_fires, 
+  water_quality,
+  max_fire_distance = 1000, 
+  max_time_since_last_fire = Inf,
+  date_interval_for_observations = dmonths(1)
+)
+
+
+stations_with_analytes = result$stations_with_analytes
+multivariate_matrix = result$multivariate_matrix
+```
+
+#### PERMANOVA
+
+```{r}
 adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire + elevation, data = multivariate_df
+  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire * elevation, data = stations_with_analytes
+  )
+
+adonis2(
+  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire + elevation, data = stations_with_analytes
 )
 
 adonis2(
-  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire, data = multivariate_df
+  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire, data = stations_with_analytes
+)
+
+adonis2(
+  vegdist(multivariate_matrix, method = "bray") ~ time_since_last_fire, data = stations_with_analytes
 )
 ```
 
-## NMDS
+#### PCA
 
 ```{r}
-nmds = metaMDS(multivariate_matrix, distance = "bray")
-nmds_env = multivariate_df |> select(last_fire_distance, time_since_last_fire, elevation )
-en = envfit(nmds, nmds_env, permutations = 999, na.rm = TRUE)
-
-en
-```
-
-## 2d Confidence Check
-
-```{r}
-
-library(gridExtra)
-pH_time = ggplot(multivariate_df, aes(y = pH, x = time_since_last_fire)) +
-  geom_point()
-
-pH_distance = ggplot(multivariate_df, aes(y = pH, x = last_fire_distance)) +
-  geom_point()
-
-pH_elevation = ggplot(multivariate_df, aes(y = pH, x = elevation)) +
-  geom_point()
-
-carbon_time = ggplot(multivariate_df, aes(y = dissolved_organic_carbon_mg_l, x = time_since_last_fire)) +
-  geom_point()
-
-carbon_distance = ggplot(multivariate_df, aes(y = dissolved_organic_carbon_mg_l, x = last_fire_distance)) +
-  geom_point()
-
-carbon_elevation = ggplot(multivariate_df, aes(y = dissolved_organic_carbon_mg_l, x = elevation)) +
-  geom_point()
-
-tss_time = ggplot(multivariate_df, aes(y = total_suspended_solids_mg_l, x = as.numeric(time_since_last_fire, "days"))) +
-  geom_point()
-
-tss_distance = ggplot(multivariate_df, aes(y = total_suspended_solids_mg_l, x = last_fire_distance)) +
-  geom_point()
-
-tss_elevation = ggplot(multivariate_df, aes(y = total_suspended_solids_mg_l, x = elevation)) +
-  geom_point()
-
-grid.arrange(pH_time, pH_distance, pH_elevation, 
-             carbon_time, carbon_distance, carbon_elevation,
-             tss_time, tss_distance, tss_elevation,
-             
-             ncol = 3)
+run_PCA(results)
 
 ```
 
-## 
+Looks like the interactions between all three is the only significant factor, which seems like it could be influenced more by differences in environmental variables based on location than on fire history.
 
-Jazzmyn
+### Limit to group ID
 
--   units and
+Group ID groups stations within 1km of one another.
 
--   Viewing the analyte data in a better way
+```{r}
+stations_with_analytes |> group_by(group_id) |> 
+  summarise(
+    count = n()
+  ) |> 
+  arrange()
+```
 
-    -   
+Group ID with greatest number of readings is 162
 
-1.  NMDS - environment variables, incorporate time
-2.  Time replicates of stations HOW
+```{r}
+result = do_the_thing(
+  water_stations, 
+  water_station_fires, 
+  water_quality,
+  max_fire_distance = 1000, 
+  max_time_since_last_fire = Inf,
+  date_interval_for_observations = dmonths(1),
+  station_groups = c(162)
+)
+
+ stations_with_analytes = result$stations_with_analytes
+ multivariate_matrix = result$multivariate_matrix
+
+```
+
+#### PERMANOVA
+
+Can remove elevation, since they are all in roughly the same location.
+
+```{r}
+adonis2(
+  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire , data = stations_with_analytes
+  )
+
+adonis2(
+  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire, data = stations_with_analytes
+)
+
+adonis2(
+  vegdist(multivariate_matrix, method = "bray") ~ time_since_last_fire, data = stations_with_analytes
+)
+```
+
+#### PCA
+
+```{r}
+run_PCA(results)
+```
+
+Seem to have some outliers in Days since last fire, so we'll remove them by setting a max time since last fire.
+
+```{r}
+stations_with_analytes |> ggplot(aes(x = days_since_last_fire)) + 
+  geom_histogram()
+```
+
+### Max time since last fire = 1000 days
+
+```{r}
+result = do_the_thing(
+  water_stations, 
+  water_station_fires, 
+  water_quality,
+  max_fire_distance = 1000, 
+  max_time_since_last_fire = ddays(1000),
+  date_interval_for_observations = dmonths(1),
+  station_groups = c(162)
+)
+
+ stations_with_analytes = result$stations_with_analytes
+ multivariate_matrix = result$multivariate_matrix
+```
+
+#### PERMANOVA
+
+Can remove elevation, since they are all in roughly the same location.
+
+```{r}
+adonis2(
+  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance * time_since_last_fire , data = stations_with_analytes
+  )
+
+adonis2(
+  vegdist(multivariate_matrix, method = "bray") ~ last_fire_distance + time_since_last_fire, data = stations_with_analytes
+)
+
+adonis2(
+  vegdist(multivariate_matrix, method = "bray") ~ time_since_last_fire, data = stations_with_analytes
+)
+```
+
+#### PCA
+
+```{r}
+run_PCA(results)
+```
