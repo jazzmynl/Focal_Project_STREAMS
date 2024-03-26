@@ -17,6 +17,12 @@ CRAM_envData <- read.csv("CRAM_envData.csv")
 TaxizedPlants <- read.csv("TaxizedPlants3-11.csv")
 ```
 
+-CRAM_Plant_Primary.Rdata is the original cleaning data (but ended up not getting used for the analysis)
+
+-CRAM_envData is the fire history data set for the 28 study sites
+
+-TaxizedPlants is the vegetation composition data that is needed for the 28 sites and species at each site.
+
 ### Load packages
 
 ```{r}
