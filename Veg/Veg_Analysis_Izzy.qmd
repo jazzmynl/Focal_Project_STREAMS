@@ -9,7 +9,7 @@ editor: visual
 
 Izzy Funes
 
-### Load the Primary Dataframe
+### Load the Primary Dataframes
 
 ```{r}
 load("CRAM_Plant_Primary.Rdata")
@@ -40,7 +40,7 @@ library(ggvegan)
 ## Create Matrix
 
 ```{r}
-Veg_Primary <- CRAM_PlantJoin 
+#Veg_Primary <- CRAM_PlantJoin 
 #might not need this though
 
 Plant_and_Fire_Join <- inner_join(CRAM_envData, TaxizedPlants)
@@ -52,7 +52,7 @@ Invasive_Site <- Plant_and_Fire_Join |>
   select(ecramid, invasive, PrePost)
 #Same as SpeciesEnv
 Species_Inv <- Plant_and_Fire_Join |>
-  select(invasive, Final_ID, PrePost) |>
+  select(invasive, Final_ID) |>
   distinct()
 
 test <- table(Plant_and_Fire_Species[1:2])
@@ -112,34 +112,94 @@ vegdist(transpose, method = "bray")
 
 Kind of long output.....not sure how to interpret
 
-## NMDS Analysis Pt. 1
+## 
 
-### Garrett's Way
+## NMDS Analysis
+
+### Izzy's Way
 
 ```{r}
-#ecramid.nmds <- metaMDS(Species_matrix, distance = "man")
-# same options for distance as vegdist
-Veg.PA <- decostand(PF_Remove_ecramid_matrix, method = "pa")
+Veg.PA.1 <- decostand(PF_Remove_ecramid_matrix, method = "pa")
 #veg.PA same as veg.hel
-veg.nmds <- metaMDS(Veg.PA, autotransform = F,trymax=100)
+veg.nmds.1 <- metaMDS(Veg.PA.1, autotransform = F,trymax=100)
 
-ordiplot(veg.nmds, type = "t") 
+ordiplot(veg.nmds.1, type = "t") 
 
-plot(veg.nmds, type = "p", display = c("site", "species"))
+plot(veg.nmds.1, type = "p", display = c("site", "species"))
 
 
 #remotes::install_github("gavinsimpson/ggvegan", force = TRUE)
 
-autoplot(veg.nmds)
+autoplot(veg.nmds.1)
 #veg.nmds.df <- data.frame(veg.nmds)
 #can't turn into a data frame apparently 
-fort <- fortify(veg.nmds)
+fort <- fortify(veg.nmds.1)
 
 
-scores <- scores(veg.nmds)
+scores <- scores(veg.nmds.1)
 
 scores
 
+```
+
+```{r}
+p3 <-  ggplot()+ 
+  geom_point(data = subset(fort, score == "sites"),
+             mapping = aes(x = NMDS1, y = NMDS2, color = CRAM_envData$PrePost),
+             alpha = 0.5)+
+  geom_segment(data = subset(fort, score == "species"),
+               mapping = aes (x = 0, y = 0, xend = NMDS1, yend = NMDS2),
+               arrow = arrow(length = unit(0.015, "npc"),
+                             type = "closed"),
+               color = "darkgray",
+               size = 0,
+               alpha = 0)+
+  geom_text(data = subset(fort, score == 'species'),
+            mapping = aes(label = label, x = NMDS1 *1.1, y = NMDS2 *1.1),
+            alpha = 0)+
+  geom_abline(intercept = 0, slope = 0, linetype="dashed", size = 0.8, color = "gray")+
+  geom_vline(aes(xintercept = 0), linetype = "dashed",  size = 0.8, color = "gray")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(color = "black"))+
+  guides(color = guide_legend(title = "Pre or Post Fire")) 
+p3
+```
+
+```{r}
+ggplot()+
+  geom_point(data = CRAM_envData, aes(x = DaysSinceFire, y = FireDist, color = PrePost))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(color = "black"))
+```
+
+Extract scores
+
+Insert fire history data
+
+native/non-native is "invasive" score (0/1)
+
+filter in site data (comparing pre-fire and post-fire)
+
+```{r}
+scores(veg.nmds.1)
+
+ecramid_site_scores <- 
+  data.frame(scores(veg.nmds.1)$sites)|>
+  bind_cols(PF_Freq_matrix$ecramid) |>
+  rename(ecramid = `...3`) |>
+  mutate(ecramid = as.numeric(as.character(ecramid)))|>
+  full_join(CRAM_envData)
+
+
+ecramid_species_scores <- 
+  data.frame(scores(veg.nmds.1)$species) |>
+  mutate(Final_ID = rownames(scores(veg.nmds.1)$species)) |>
+  full_join(Species_Inv) |>
+  mutate(invasive = factor(invasive))
 ```
 
 ### ggplots
@@ -168,39 +228,9 @@ p1
 ```
 
 ```{r}
-p2 <- ggplot()+ 
-  geom_point(data = subset(fort, score == "sites"),
-             mapping = aes(x = NMDS1, y = NMDS2),
-             color = "black",
-             alpha = 0)+
-  geom_segment(data = subset(fort, score == "species"),
-               mapping = aes (x = 0, y = 0, xend = NMDS1, yend = NMDS2),
-               arrow = arrow(length = unit(0.015, "npc"),
-                             type = "closed"),
-               color = "darkgray",
-               size = 0.8)+
-  geom_text(data = subset(fort, score == 'species'),
-            mapping = aes(label = label, x = NMDS1 *1.1, y = NMDS2 *1.1))+
-  geom_abline(intercept = 0, slope = 0, linetype="dashed", size = 0.8, color = "gray")+
-  geom_vline(aes(xintercept = 0), linetype = "dashed",  size = 0.8, color = "gray")+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(color = "black"))
-
-p2
-
-
-ggarrange(p1, p2, ncol = 1)
-
-
-```
-
-```{r}
-#summary(CRAM_envData)
 p3 <-  ggplot()+ 
   geom_point(data = subset(fort, score == "sites"),
-             mapping = aes(x = NMDS1, y = NMDS2, color = CRAM_envData$PrePost ),
+             mapping = aes(x = NMDS1, y = NMDS2, color = CRAM_envData$PrePost),
              alpha = 0.5)+
   geom_segment(data = subset(fort, score == "species"),
                mapping = aes (x = 0, y = 0, xend = NMDS1, yend = NMDS2),
@@ -220,120 +250,58 @@ p3 <-  ggplot()+
         axis.line = element_line(color = "black"))+
   guides(color = guide_legend(title = "Pre or Post Fire")) 
 p3
-
-
-p4 <- ggplot()+ 
-  geom_point(data = subset(fort, score == "sites"),
-             mapping = aes(x = NMDS1, y = NMDS2),
-             color = "black",
-             alpha = 0)+
-  geom_segment(data = subset(fort, score == "species"),
-               mapping = aes (x = 0, y = 0, xend = NMDS1, yend = NMDS2, color = Invasive_Site$invasive),
-               arrow = arrow(length = unit(0.015, "npc"),
-                             type = "closed"),
-               size = 0.8)+
-  geom_text(data = subset(fort, score == 'species'),
-            mapping = aes(label = label, x = NMDS1 *1.1, y = NMDS2 *1.1, color = Invasive_Site$invasive))+
-  geom_abline(intercept = 0, slope = 0, linetype="dashed", size = 0.8, color = "gray")+
-  geom_vline(aes(xintercept = 0), linetype = "dashed",  size = 0.8, color = "gray")+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(color = "black"))
-p4
-
-
-
-ggarrange(p3, p4, ncol = 1)
-```
-
-```{r}
-ggplot()+
-  geom_point(data = CRAM_envData, aes(x = DaysSinceFire, y = FireDist, color = PrePost))+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(color = "black"))
-```
-
-Statistical Analysis
-
-```{r}
-x <- adonis2(Veg.PA~DaysSinceFire*FireDist, data = CRAM_envData)
-
-z <- adonis2(Veg.PA~DaysSinceFire*FireDist*Elevation*FireSize, data = CRAM_envData)
-
-y <- adonis2(Veg.PA~FireDist, data = CRAM_envData)
-```
-
-## NMDS Analysis PT. 2
-
-### Izzy's Way
-
-```{r}
-veg.PA.1 <- decostand(PF_Remove_ecramid_matrix, method = "pa")
-veg.nmds.1  <- metaMDS(Veg.PA.1, distance = "man")
-```
-
-Extract scores
-
-Insert fire history data
-
-native/non-native is "invasive" score (0/1)
-
-filter in site data (comparing pre-fire and post-fire)
-
-```{r}
-scores(veg.nmds.1)
-
-ecramid_site_scores <- 
-  data.frame(scores(veg.nmds.1)$sites)|>
-  mutate(Site = rownames(scores(veg.nmds)$sites))  
-  #separate(Site, into = c("invasive", "Final_ID"), sep = "_")
-
-sites_join <- inner_join(ecramid_site_scores, Invasive_Site)
-
-ecramid_species_scores <- 
-  data.frame(scores(veg.nmds.1)$species) |>
-  mutate(Species = rownames(scores(veg.nmds.1)$species))
-```
-
-### ggplots
-
-```{r}
-ecramid_NMDS_plot <- ggplot() + 
-  geom_text(data = subset(fort, score == 'species'),
-            mapping = aes(label = label, x = NMDS1 *1.1, y = NMDS2 *1.1),
-            alpha = 0) + 
-  geom_point(data = subset(fort, score == "sites"),
-             mapping = aes(x = NMDS1, y = NMDS2),
-             color = "black",
-             alpha = 0)
-
-ecramid_NMDS_plot
 ```
 
 ```{r}
 NMDS_plot <- ggplot() + 
-  geom_text(data = fort, aes(x = NMDS1, y = NMDS2, label = Species, color = Native), cex = 3) + 
-  geom_point(data = Species_scores, aes(x = NMDS1, y = NMDS2, label = Species))
-NMDS_plot
+  #geom_text(data = ecramid_species_scores, aes(x = NMDS1, y = NMDS2, label = Final_ID, color = invasive), cex = 3) + 
+  geom_point(data = ecramid_species_scores, aes(x = NMDS1, y = NMDS2, label = Final_ID, shape = invasive)) +
+  geom_text(data = ecramid_site_scores, aes(x = NMDS1, y = NMDS2, label = PrePost, color = PrePost))
+NMDS_plot 
 ```
 
 plotting with hulls
 
 ```{r}
-grp.Nat <- ecramid_site_scores[ecramid_site_scores$Native == "NATIVE", ][chull(ecramid_site_scores[ecramid_site_scores$Native == 
-    "NATIVE", c("NMDS1", "NMDS2")]), ]  # hull values for grp A
-grp.NonNat <- ecramid_site_scores[Site_scores$Native == "NN", ][chull(Site_scores[Site_scores$Native == 
-    "NN", c("NMDS1", "NMDS2")]), ]  # hull values for grp B
+grp.Pre <- ecramid_site_scores[ecramid_site_scores$PrePost == "pre", ][chull(ecramid_site_scores[ecramid_site_scores$PrePost == 
+    "pre", c("NMDS1", "NMDS2")]), ]  # hull values for grp A
+grp.Post <- ecramid_site_scores[ecramid_site_scores$PrePost == "post", ][chull(ecramid_site_scores[ecramid_site_scores$PrePost == 
+    "post", c("NMDS1", "NMDS2")]), ]  # hull values for grp B
 
-hull.data <- rbind(grp.Nat, grp.NonNat)  #combine grp.a and grp.b
+hull.data <- rbind(grp.Pre, grp.Post)  #combine grp.a and grp.b
 hull.data
 
+#install.packages("ggforce")
 
 NMDS_plot + 
-  geom_polygon(data = hull.data, aes(x = NMDS1, y = NMDS2, color = Native, fill = Native), alpha = 0.1)
+  geom_polygon(data = hull.data, aes(x = NMDS1, y = NMDS2, color = PrePost, fill = PrePost), alpha = 0.1) 
+  #ggforce::geom_ellipse(data = hull.data, aes(x0 = mean(NMDS1), y0 = mean(NMDS2), a = sd(NMDS1) , b =sd(NMDS2), angle = 0, color = PrePost, fill = PrePost), alpha = 0.1)
+
+#maybe use shape =  to differentiate between invasive/noninvasive, and keep pre/post colors
+```
+
+## PERMANOVA
+
+```{r}
+permanova_1 <- adonis2(Veg.PA.1~DaysSinceFire*FireDist, data = CRAM_envData, method = "bray" )
+
+permanova_1
+
+permanova_2 <- adonis2(Veg.PA.1~DaysSinceFire*FireDist*Elevation*FireSize, data = CRAM_envData, method = "bray")
+
+permanova_2
+
+```
+
+```{r}
+permanova_4 <- adonis2(Veg.PA.1~ecramid, data = CRAM_envData, method = "bray")
+permanova_4
+
+permanova_5 <- adonis2(Veg.PA.1~ecramid*Elevation, data = CRAM_envData, method = "bray")
+permanova_5
+
+permanova_6 <- adonis2(Veg.PA.1~ecramid*Elevation*DaysSinceFire, data = CRAM_envData, method = "bray")
+permanova_6
 ```
 
 #potential later maps - color-code site locations by pre-fire/post-fire to compare
