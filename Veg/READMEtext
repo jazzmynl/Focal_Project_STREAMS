@@ -1,1 +1,13 @@
 README_Veg_Analysis
+Izzy Funes - Advanced Quantitative Methods - University of California, Irvine
+
+-CRAM_Plant_Primary.Rdata is the original cleaning data (but ended up not getting used for the analysis)
+
+NMDS stuff for Izzy -Garrett : this folder has updated data files with vegetation and fire history data files. Two files used from this folder are described next:
+-CRAM_envData is the fire history data set for the 28 study sites
+
+-TaxizedPlants is the vegetation composition data that is needed for the 28 sites and species at each site.
+
+NEW_CRAM_Sites4.xlsx - this file is another cleaning version of the CRAM sites that was not used for analysis
+
+Veg_Analysis_Izzy.qmd - final analysis script for the vegetation analysis for the streams focal project
