@@ -182,6 +182,24 @@ ggplot()+
         axis.line = element_line(color = "black"))
 ```
 
+```{r}
+ggplot()+
+  geom_point(data = CRAM_envData, aes(x = Elevation, y = FireDist, color = PrePost))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(color = "black"))
+```
+
+```{r}
+ggplot()+
+  geom_histogram(data = CRAM_envData, aes(x = Elevation, fill = PrePost, color = PrePost))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(color = "black"))
+```
+
 Extract scores
 
 Insert fire history data
